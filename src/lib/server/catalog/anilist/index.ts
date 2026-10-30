@@ -3,6 +3,8 @@ import type { Item, ItemDetail, Release, ResultPage } from '$lib/types';
 import type { Catalog } from '../types';
 import { NotFound, query } from './client';
 import { DETAIL, HOME, searchQuery } from './queries';
+import { titles, startCrawler } from './crawl';
+import { FORMATS } from './format';
 import { FILTERS, SORTS, filterVariables, sortVariable, variants } from './search';
 import { currentSeason } from './season';
 
@@ -44,15 +46,6 @@ interface Airing {
 
 type Page<T> = { media?: T[]; airingSchedules?: T[] };
 
-const FORMATS: Record<string, string> = {
-	TV: 'TV',
-	TV_SHORT: 'TV Short',
-	MOVIE: 'Movie',
-	SPECIAL: 'Special',
-	OVA: 'OVA',
-	ONA: 'ONA',
-	MUSIC: 'Music'
-};
 
 const humanize = (value: string | null) =>
 	value ? value.charAt(0) + value.slice(1).toLowerCase().replaceAll('_', ' ') : '';
@@ -86,12 +79,23 @@ type SearchResult = { main: { pageInfo: { total: number; hasNextPage: boolean };
 	{ media: Media[] }
 >;
 
+const PER_PAGE = 30;
+
+const LOCAL_SORTS: Record<string, 'popularity' | 'score' | 'newest' | 'title'> = {
+	POPULARITY_DESC: 'popularity',
+	TRENDING_DESC: 'popularity',
+	SCORE_DESC: 'score',
+	START_DATE_DESC: 'newest',
+	TITLE_ROMAJI: 'title'
+};
+
 export const anilist: Catalog = {
 	name: 'AniList',
 	url: 'https://anilist.co',
 	imageHosts: ['s4.anilist.co', 'img.anili.st'],
 	filters: FILTERS,
 	sorts: SORTS,
+	start: startCrawler,
 
 	async home() {
 		const now = Math.floor(Date.now() / 1000);
@@ -127,6 +131,20 @@ export const anilist: Catalog = {
 	},
 
 	async search(q) {
+		// Text searches use the local title index once it's built: typo-tolerant,
+		// instant, and free of the rate limit.
+		if (q.text && titles.getState<{ complete: boolean }>()?.complete) {
+			const all = titles.search({
+				text: q.text,
+				filters: q.filters,
+				multi: new Set(FILTERS.filter((f) => f.multi).map((f) => f.key)),
+				adult: q.adult,
+				sort: LOCAL_SORTS[q.sort] ?? 'relevance'
+			});
+			const from = (q.page - 1) * PER_PAGE;
+			return { items: all.slice(from, from + PER_PAGE), hasNext: all.length > from + PER_PAGE, total: all.length };
+		}
+
 		// Looser spellings only make sense on the first page of a text search.
 		const loose = q.text && q.page === 1 ? variants(q.text) : [];
 		const variables: Record<string, unknown> = {

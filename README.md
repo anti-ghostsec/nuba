@@ -12,7 +12,11 @@ section only shows official services listed by the catalog.
 
 - Home page with a hero carousel, shelves, a top-ranked list and a release schedule
   in the viewer's timezone (whatever the catalog provides)
-- Search, browsing, and detail pages with outbound links and recommendations
+- Typo-tolerant search ("narto" finds Naruto) with filters for format, year, season,
+  status, genre and sort, served from a local title index so it is instant and doesn't
+  use the catalog's rate limit
+- Browsing and detail pages with outbound links and recommendations
+- Optional adult titles: a signed-in, self-declared 18+ setting, off by default
 - **Nuba's own accounts and lists**: username and password only, no email, nothing
   linked to a third-party account. Continue Watching row, status badges on cards,
   one-click progress, and a list editor on every title
@@ -48,6 +52,7 @@ See `.env.example` for configuration. Accounts and lists are stored in
 | Data source | `src/lib/server/catalog/` | Add a folder that implements the `Catalog` interface in `catalog/types.ts`, register it in `catalog/index.ts`, set `NUBA_CATALOG` |
 | Wording | `src/lib/site.ts` | Site name, search placeholder, unit name (episode → chapter), list status labels |
 | Data model | `src/lib/types.ts` | Generic `Item`, `ItemDetail`, `HomeFeed`, used by every page |
+| Search index | `src/lib/server/title-index.ts` | Generic. A catalog fills it with records (names, card, filter values); see `catalog/anilist/crawl.ts` |
 | Accounts and lists | `src/lib/server/users.ts`, `library.ts` | Independent of the catalog. Each list entry stores a snapshot of its item, so lists keep working if the catalog changes or goes offline |
 
 Nothing outside `src/lib/server/catalog/` knows AniList exists. Syncing lists with
@@ -73,4 +78,8 @@ Keep `NUBA_IMAGE_PROXY=true` so images are served from your own server.
   per IP, because over Tor every visitor shares an IP.
 - AniList rate-limits API clients (currently about 30 requests per minute). Nuba caches
   responses in memory and serves stale data while refreshing.
+- On first start Nuba downloads AniList's title list (about 22,000 anime, ~50 requests,
+  a few minutes) into `data/nuba.db`, then checks for changes every 30 minutes. It
+  pauses whenever visitors need the rate limit. Until the first pass finishes, text
+  searches go to AniList directly.
 - Not affiliated with AniList.

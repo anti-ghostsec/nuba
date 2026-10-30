@@ -14,6 +14,9 @@ export interface Catalog {
 	filters: Filter[];
 	sorts: Option[];
 
+	/** Optional background work (e.g. keeping a local search index), started once with the server. */
+	start?(): void;
+
 	home(): Promise<HomeFeed>;
 	/** Search, or browse when the text is empty. Excludes adult items unless query.adult. */
 	search(query: SearchQuery): Promise<ResultPage>;

@@ -18,7 +18,10 @@ const inflight = new Map<string, Promise<unknown>>();
 
 export class NotFound extends Error {}
 
-async function request<T>(query: string, variables: Record<string, unknown>): Promise<T> {
+/** What AniList last said about our rate limit, so background work can stay out of the way. */
+export const budget = { remaining: 30, resetAt: 0 };
+
+export async function request<T>(query: string, variables: Record<string, unknown>): Promise<T> {
 	let res: Response;
 	try {
 		res = await fetch(ENDPOINT, {
@@ -29,6 +32,13 @@ async function request<T>(query: string, variables: Record<string, unknown>): Pr
 		});
 	} catch (e) {
 		throw new CatalogUnavailable(`AniList unreachable: ${e}`);
+	}
+
+	const remaining = Number(res.headers.get('x-ratelimit-remaining'));
+	if (Number.isFinite(remaining) && res.headers.has('x-ratelimit-remaining')) budget.remaining = remaining;
+	if (res.status === 429) {
+		budget.remaining = 0;
+		budget.resetAt = Date.now() + (Number(res.headers.get('retry-after')) || 60) * 1000;
 	}
 
 	const body = await res.json().catch(() => null);

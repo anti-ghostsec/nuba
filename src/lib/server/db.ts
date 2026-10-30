@@ -30,7 +30,19 @@ const MIGRATIONS = [
 		PRIMARY KEY (user_id, item_id)
 	);
 	`,
-	`ALTER TABLE users ADD COLUMN show_adult INTEGER NOT NULL DEFAULT 0;`
+	`ALTER TABLE users ADD COLUMN show_adult INTEGER NOT NULL DEFAULT 0;`,
+	`
+	CREATE TABLE title_index (
+		catalog TEXT NOT NULL,
+		id TEXT NOT NULL,
+		record TEXT NOT NULL,
+		PRIMARY KEY (catalog, id)
+	);
+	CREATE TABLE title_index_state (
+		catalog TEXT PRIMARY KEY,
+		state TEXT NOT NULL
+	);
+	`
 ];
 
 let db: Database.Database | undefined;
