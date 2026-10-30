@@ -104,6 +104,8 @@ export interface SearchQuery {
 	/** One of the catalog's sort values, or '' for its default. */
 	sort: string;
 	adult: boolean;
+	/** Only these item ids, when set (e.g. titles found by a link search). */
+	within?: string[];
 }
 
 export type ListStatus = 'CURRENT' | 'PLANNING' | 'COMPLETED' | 'PAUSED' | 'DROPPED';

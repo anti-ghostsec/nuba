@@ -22,8 +22,13 @@ export interface IndexRecord {
 	popularity: number;
 }
 
+/** Extra facets and keywords laid over a record, e.g. community tags. */
+export type Overlay = Pick<IndexRecord, 'facets' | 'adultFacets' | 'keywords' | 'adultKeywords'>;
+
 export interface IndexQuery {
 	text: string;
+	/** Only these items, when set. */
+	only?: Set<string>;
 	filters: Record<string, string[]>;
 	/** Which filters accept several values that must all match. */
 	multi: Set<string>;
@@ -81,7 +86,10 @@ function wordScore(typed: string, word: string): number {
 }
 
 interface Entry {
+	/** The catalog's record with any overlay merged in. */
 	record: IndexRecord;
+	/** The record as the catalog gave it. */
+	raw: IndexRecord;
 	/** Normalized names, for whole-phrase and CJK matching. */
 	flat: string[];
 	keywords: string[];
@@ -130,6 +138,35 @@ const FEW = 30;
 /** A word found in a tag counts for less than one found in the title. */
 const KEYWORD_WEIGHT = 0.7;
 
+function merge(r: IndexRecord, o: Overlay | undefined): IndexRecord {
+	if (!o) return r;
+	const join = (a: Record<string, string[]> = {}, b: Record<string, string[]> = {}) => {
+		const out = { ...a };
+		for (const [k, v] of Object.entries(b)) out[k] = [...(out[k] ?? []), ...v];
+		return out;
+	};
+	return {
+		...r,
+		facets: join(r.facets, o.facets),
+		adultFacets: join(r.adultFacets, o.adultFacets),
+		keywords: [...(r.keywords ?? []), ...(o.keywords ?? [])],
+		adultKeywords: [...(r.adultKeywords ?? []), ...(o.adultKeywords ?? [])]
+	};
+}
+
+/** Where overlays come from; set once by whatever provides them. */
+let overlaySource: ((catalog: string) => Map<string, Overlay>) | undefined;
+const indexes = new Map<string, TitleIndex>();
+
+/** Registers the overlay provider and applies it to every index already loaded. */
+export function setOverlaySource(source: (catalog: string) => Map<string, Overlay>) {
+	overlaySource = source;
+	for (const index of indexes.values()) index.reloadOverlays();
+}
+
+/** The index for a catalog, if one exists in this process. */
+export const indexFor = (catalog: string) => indexes.get(catalog);
+
 export class TitleIndex {
 	private entries = new Map<string, Entry>();
 	private names = new WordMap();
@@ -137,24 +174,50 @@ export class TitleIndex {
 	private adultKeywords = new WordMap();
 	private cache = new Map<string, { id: string; score: number }[]>();
 	private facetCache = new Map<string, string[]>();
+	private overlays = new Map<string, Overlay>();
 	private loaded = false;
 
-	constructor(private catalog: string) {}
+	constructor(private catalog: string) {
+		indexes.set(catalog, this);
+	}
 
 	private load() {
 		if (this.loaded) return;
 		this.loaded = true;
+		this.overlays = overlaySource?.(this.catalog) ?? new Map();
 		const rows = getDb().prepare('SELECT record FROM title_index WHERE catalog = ?').all(this.catalog) as {
 			record: string;
 		}[];
 		for (const { record } of rows) this.add(JSON.parse(record));
 	}
 
-	private add(record: IndexRecord) {
-		this.remove(record.id);
+	/** Replaces one item's overlay (null removes it). */
+	setOverlay(id: string, overlay: Overlay | null) {
+		if (overlay) this.overlays.set(id, overlay);
+		else this.overlays.delete(id);
+		if (!this.loaded) return;
+		const e = this.entries.get(id);
+		if (e) this.add(e.raw);
+		this.cache.clear();
+		this.facetCache.clear();
+	}
+
+	/** Fetches every overlay again from the source. */
+	reloadOverlays() {
+		if (!this.loaded) return;
+		this.overlays = overlaySource?.(this.catalog) ?? new Map();
+		for (const e of [...this.entries.values()]) this.add(e.raw);
+		this.cache.clear();
+		this.facetCache.clear();
+	}
+
+	private add(raw: IndexRecord) {
+		this.remove(raw.id);
 		const clean = (list: string[] = []) => [...new Set(list.map(normalize).filter(Boolean))];
+		const record = merge(raw, this.overlays.get(raw.id));
 		const entry = {
 			record,
+			raw,
 			flat: clean(record.names),
 			keywords: clean(record.keywords),
 			adultKeywords: clean(record.adultKeywords)
@@ -314,9 +377,13 @@ export class TitleIndex {
 
 	search(q: IndexQuery): Item[] {
 		this.load();
-		const all = q.text.trim() ? this.match(q.text, q.adult) : [...this.entries.keys()].map((id) => ({ id, score: 0 }));
+		const all = q.text.trim()
+			? this.match(q.text, q.adult)
+			: [...(q.only ?? this.entries.keys())].map((id) => ({ id, score: 0 }));
 		const hits = all.filter(({ id }) => {
-			const r = this.entries.get(id)!.record;
+			if (q.only && !q.only.has(id)) return false;
+			const r = this.entries.get(id)?.record;
+			if (!r) return false;
 			if (r.item.adult && !q.adult) return false;
 			for (const [key, values] of Object.entries(q.filters)) {
 				if (!values.length) continue;

@@ -8,6 +8,8 @@
 	let { data, form } = $props();
 	const account = useAccount();
 
+	const time = (ms: number) =>
+		new Date(ms).toLocaleString('en', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 	const date = (ms: number) => new Date(ms).toLocaleDateString('en', { year: 'numeric', month: 'short', day: 'numeric' });
 
 	// Destructive buttons ask first (with JavaScript; without it they just go).
@@ -66,6 +68,7 @@
 						<span role="cell" class="name">
 							{u.username}
 							{#if u.isAdmin}<span class="tag">admin</span>{/if}
+							{#if u.tagBlocked}<span class="tag off">no tagging</span>{/if}
 							{#if u.id === account.user?.id}<span class="tag you">you</span>{/if}
 						</span>
 						<span role="cell" class="muted">{date(u.createdAt)}</span>
@@ -76,6 +79,14 @@
 								<button class="btn ghost small">Reset password</button>
 							</form>
 							{#if u.id !== account.user?.id}
+								<form method="POST" action="?/toggleTagging" use:enhance>
+									<input type="hidden" name="userId" value={u.id} />
+									<button class="btn ghost small">{u.tagBlocked ? 'Allow tagging' : 'Stop tagging'}</button>
+								</form>
+								<form method="POST" action="?/undoTags" use:enhance onsubmit={confirmed(`Take back every tag, link and vote ${u.username} has made?`)}>
+									<input type="hidden" name="userId" value={u.id} />
+									<button class="btn ghost small">Undo tags</button>
+								</form>
 								<form method="POST" action="?/toggleAdmin" use:enhance>
 									<input type="hidden" name="userId" value={u.id} />
 									<button class="btn ghost small">{u.isAdmin ? 'Remove admin' : 'Make admin'}</button>
@@ -96,6 +107,89 @@
 			<p class="muted">No accounts{data.q ? ' match that name' : ' yet'}.</p>
 		{/if}
 		{#if data.users.length === 100}<p class="muted small-print">Showing the newest 100. Search to find others.</p>{/if}
+	</section>
+
+	<section class="panel community" id="community">
+		<div class="head">
+			<h2>Community tags</h2>
+			<form class="find" role="search" action="#community">
+				<Search size={16} />
+				{#if data.q}<input type="hidden" name="q" value={data.q} />{/if}
+				<input name="tag" type="search" value={data.community.tq} placeholder="Find a tag" aria-label="Find a tag" />
+			</form>
+		</div>
+		<p class="muted small-print">
+			{data.community.stats.tags.toLocaleString('en')} tags on {data.community.stats.taggedItems.toLocaleString('en')} titles ·
+			{data.community.stats.links.toLocaleString('en')} links · {data.community.stats.blocked} accounts not allowed to tag
+		</p>
+
+		{#if data.community.tags.length}
+			<ul class="tags">
+				{#each data.community.tags as t (t.id)}
+					<li>
+						<span class="name">
+							{t.name}
+							{#if t.kind === 'link'}<span class="tag">link name</span>{/if}
+							{#if t.adult}<span class="tag off">18+</span>{/if}
+							{#if t.banned}<span class="tag off">banned</span>{/if}
+							{#if t.aliasOf}<span class="muted">→ {t.aliasOf}</span>{/if}
+							<span class="muted uses">{t.uses} {t.uses === 1 ? 'use' : 'uses'}</span>
+						</span>
+						<span class="actions">
+							<form method="POST" action="?/editTag" use:enhance class="rename">
+								<input type="hidden" name="name" value={t.name} />
+								<input name="to" placeholder="New name or tag to merge into" aria-label="New name, or the tag to merge into" maxlength="40" />
+								<button class="btn ghost small" name="op" value="rename">Rename</button>
+								<button class="btn ghost small" name="op" value="merge">Merge into</button>
+							</form>
+							<form method="POST" action="?/editTag" use:enhance>
+								<input type="hidden" name="name" value={t.name} />
+								<button class="btn ghost small" name="op" value={t.adult ? 'unadult' : 'adult'}>{t.adult ? 'Not 18+' : 'Mark 18+'}</button>
+								<button
+									class="btn ghost small"
+									class:danger={!t.banned}
+									name="op"
+									value={t.banned ? 'unban' : 'ban'}
+									onclick={(e) => {
+										if (!t.banned && !confirm(`Ban “${t.name}”? It comes off every title and link.`)) e.preventDefault();
+									}}>{t.banned ? 'Unban' : 'Ban'}</button
+								>
+							</form>
+						</span>
+					</li>
+				{/each}
+			</ul>
+		{:else}
+			<p class="muted">No tags{data.community.tq ? ' match that' : ' yet'}.</p>
+		{/if}
+
+		<div class="link-names">
+			<p class="muted">
+				Link names: {data.community.linkNames.join(', ')}. Searching “{data.community.linkNames[0]}” finds any kind of link.
+			</p>
+			<form method="POST" action="?/editTag" use:enhance class="rename">
+				<input type="hidden" name="op" value="linkName" />
+				<input name="name" placeholder="New link name, one word" aria-label="New link name" maxlength="40" required />
+				<button class="btn ghost small">Add link name</button>
+			</form>
+		</div>
+
+		<h3>Recent activity</h3>
+		{#if data.community.recent.length}
+			<ul class="log">
+				{#each data.community.recent as e (e.id)}
+					<li>
+						<span class="muted">{time(e.at)}</span>
+						<span class="who">{e.username ?? (e.actor ? `#${e.actor}` : 'deleted account')}</span>
+						<span>{e.action.replaceAll('-', ' ')}</span>
+						<span class="what">{e.detail}</span>
+						{#if e.titleId}<a href="/title/{e.titleId}#community">title</a>{/if}
+					</li>
+				{/each}
+			</ul>
+		{:else}
+			<p class="muted">Nothing yet.</p>
+		{/if}
 	</section>
 </div>
 
@@ -217,6 +311,76 @@
 		font-size: 0.68rem;
 		font-weight: 600;
 		background: var(--accent-soft);
+		color: var(--accent);
+	}
+	.tag.off {
+		background: color-mix(in srgb, #fb7185 15%, transparent);
+		color: #fb7185;
+	}
+	h3 {
+		font-size: 0.92rem;
+		font-weight: 600;
+	}
+	.tags,
+	.log {
+		margin: 0;
+		padding: 0;
+		list-style: none;
+		display: grid;
+	}
+	.tags li {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: space-between;
+		align-items: center;
+		gap: 10px;
+		padding: 10px 0;
+		border-top: 1px solid var(--border);
+		font-size: 0.9rem;
+	}
+	.tags .name {
+		flex-wrap: wrap;
+	}
+	.uses {
+		font-size: 0.8rem;
+		font-weight: 400;
+	}
+	.rename,
+	.tags .actions form {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+	.rename input:not([type='hidden']) {
+		height: 30px;
+		width: min(220px, 100%);
+		padding: 0 10px;
+		border-radius: 8px;
+		border: 1px solid var(--border);
+		background: var(--surface);
+		color: var(--text);
+		font-size: 0.8rem;
+	}
+	.link-names {
+		display: grid;
+		gap: 8px;
+		font-size: 0.88rem;
+	}
+	.log li {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px 10px;
+		padding: 6px 0;
+		border-top: 1px solid var(--border);
+		font-size: 0.84rem;
+	}
+	.log .who {
+		font-weight: 600;
+	}
+	.log .what {
+		color: var(--muted);
+	}
+	.log a {
 		color: var(--accent);
 	}
 	.tag.you {

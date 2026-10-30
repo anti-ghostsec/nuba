@@ -146,12 +146,18 @@ export const anilist: Catalog = {
 		// Text searches use the local title index once it's built: typo-tolerant,
 		// instant, and free of the rate limit. So do Studio, which AniList's
 		// search can't filter by, and Tags, where every picked tag must match.
+		// A set of ids or a filter AniList has never heard of (community tags)
+		// can only be answered locally.
+		const own = allFilters(q.adult);
+		const foreign = !!q.within || Object.entries(q.filters).some(([k, v]) => v.length && !own.some((f) => f.key === k));
 		const local = q.text || q.filters.studio?.length || q.filters.tag?.length;
-		if (local && titles.getState<{ ready?: boolean }>()?.ready) {
+		if (foreign || (local && titles.getState<{ ready?: boolean }>()?.ready)) {
+			const single = new Set(own.filter((f) => !f.multi).map((f) => f.key));
 			const all = titles.search({
 				text: q.text,
 				filters: q.filters,
-				multi: new Set(allFilters(q.adult).filter((f) => f.multi).map((f) => f.key)),
+				multi: new Set(Object.keys(q.filters).filter((k) => !single.has(k))),
+				only: q.within && new Set(q.within),
 				adult: q.adult,
 				sort: LOCAL_SORTS[q.sort] ?? 'relevance'
 			});

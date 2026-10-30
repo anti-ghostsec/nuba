@@ -1,6 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { PREFS_COOKIE, sanitizePrefs } from '$lib/prefs';
 import { catalog } from '$lib/server/catalog';
+import { forgetUser } from '$lib/server/community';
 import { clearList } from '$lib/server/library';
 import {
 	BIO_MAX,
@@ -194,6 +195,7 @@ export const actions: Actions = {
 		const password = String((await request.formData()).get('password') ?? '');
 		if (!(await checkPassword(locals.user.id, password))) return fail(400, say('delete', 'Wrong password.'));
 		endSession(cookies);
+		forgetUser(locals.user.id);
 		deleteUser(locals.user.id);
 		redirect(303, '/');
 	}

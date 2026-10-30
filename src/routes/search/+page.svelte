@@ -14,6 +14,12 @@
 	const chips = $derived(data.filters.filter((f) => f.multi && !f.picker));
 	const filtered = $derived(!!q.text || !!q.sort || Object.keys(q.filters).length > 0);
 	const count = $derived(data.result.total);
+	const plainHref = $derived.by(() => {
+		const params = new URLSearchParams(page.url.searchParams);
+		params.delete('page');
+		params.set('plain', '1');
+		return `/search?${params}`;
+	});
 
 	const pageHref = (n: number) => {
 		const params = new URLSearchParams(page.url.searchParams);
@@ -102,10 +108,30 @@
 		{/each}
 	</form>
 
+	{#if data.linkQuery}
+		<p class="linked">
+			Titles where
+			{#if data.linkQuery.tags.length}<strong>{data.linkQuery.tags.join(' + ')}</strong> {data.linkQuery.tags.length > 1 ? 'are' : 'is'} linked{:else}tags are linked{/if}
+			{#if data.linkQuery.kinds.length}by <strong>{data.linkQuery.kinds.join(' or ')}</strong>{/if}.
+			<a href={plainHref}>Search the words instead</a>
+		</p>
+	{/if}
+
 	{#if data.result.items.length}
 		<div class="grid">
 			{#each data.result.items as item (item.id)}
-				<Card {item} />
+				{#if data.links?.[item.id]}
+					<div class="hit">
+						<Card {item} />
+						<ul class="groups">
+							{#each data.links[item.id].slice(0, 3) as g, i (i)}
+								<li title={g.kind}>{g.members.join(' · ')}</li>
+							{/each}
+						</ul>
+					</div>
+				{:else}
+					<Card {item} />
+				{/if}
 			{/each}
 		</div>
 	{:else}
@@ -256,6 +282,37 @@
 	}
 	.empty {
 		color: var(--muted);
+	}
+	.linked {
+		color: var(--muted);
+		font-size: 0.92rem;
+	}
+	.linked strong {
+		color: var(--text);
+	}
+	.linked a {
+		margin-left: 6px;
+		color: var(--accent);
+	}
+	.hit {
+		display: grid;
+		gap: 6px;
+		align-content: start;
+		min-width: 0;
+	}
+	.groups {
+		margin: 0;
+		padding: 0;
+		list-style: none;
+		display: grid;
+		gap: 3px;
+		font-size: 0.75rem;
+		color: var(--accent);
+	}
+	.groups li {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.pager {
 		display: flex;

@@ -1,5 +1,10 @@
 <script lang="ts">
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import ChevronUp from '@lucide/svelte/icons/chevron-up';
 	import ExternalLink from '@lucide/svelte/icons/external-link';
+	import Link2 from '@lucide/svelte/icons/link-2';
+	import Plus from '@lucide/svelte/icons/plus';
+	import X from '@lucide/svelte/icons/x';
 	import Heart from '@lucide/svelte/icons/heart';
 	import { enhance } from '$app/forms';
 	import { useAccount } from '$lib/context';
@@ -11,7 +16,7 @@
 	import { img, score, titleOf } from '$lib/format';
 	import { SITE } from '$lib/site';
 
-	let { data } = $props();
+	let { data, form } = $props();
 
 	const prefs = usePrefs();
 	const account = useAccount();
@@ -28,6 +33,10 @@
 	const search = (key: string | null, value: string) => (key ? `/search?${new URLSearchParams({ [key]: value })}` : null);
 	const visibleKeywords = $derived(m.keywords.filter((k) => !k.spoiler));
 	const spoilers = $derived(m.keywords.filter((k) => k.spoiler));
+	const c = $derived(data.community);
+	const isAdmin = $derived(!!account.user?.isAdmin);
+	/** A search for everything linked with this tag by this kind of link. */
+	const linkSearch = (tag: string, kind: string) => `/search?${new URLSearchParams({ q: `${tag} ${kind}` })}`;
 
 	const nextAt = $derived(
 		m.next &&
@@ -115,6 +124,124 @@
 				{/if}
 			</section>
 		{/if}
+
+		<section class="group community" id="community">
+			<h2>Community tags</h2>
+			{#if c.tags.length}
+				<div class="chips">
+					{#each c.tags as t (t.name)}
+						<span class="ctag" class:faded={t.score <= 0}>
+							<a href={search('community', t.name)}>{t.name}</a>
+							<span class="weight" title="Score">{t.score}</span>
+							{#if c.canTag}
+								<form method="POST" action="?/tag#community" class="votes" use:enhance>
+									<input type="hidden" name="name" value={t.name} />
+									<button name="vote" value={t.mine === 1 ? '0' : '1'} class:on={t.mine === 1} aria-pressed={t.mine === 1} title="Fits">
+										<ChevronUp size={14} /><span class="sr-only">Fits</span>
+									</button>
+									<button name="vote" value={t.mine === -1 ? '0' : '-1'} class:on={t.mine === -1} aria-pressed={t.mine === -1} title="Doesn't fit">
+										<ChevronDown size={14} /><span class="sr-only">Doesn't fit</span>
+									</button>
+								</form>
+							{/if}
+							{#if isAdmin}
+								<form method="POST" action="?/removeTag#community" class="votes" use:enhance>
+									<input type="hidden" name="name" value={t.name} />
+									<button class="remove" title="Remove from this title"><X size={13} /><span class="sr-only">Remove</span></button>
+								</form>
+							{/if}
+						</span>
+					{/each}
+				</div>
+			{:else}
+				<p class="muted">No community tags yet.</p>
+			{/if}
+
+			{#if c.links.length}
+				<ul class="clinks">
+					{#each c.links as l (l.id)}
+						<li class:faded={l.score <= 0}>
+							<a class="kind" href="/search?{new URLSearchParams({ q: l.kind })}"><Link2 size={13} />{l.kind}</a>
+							<span class="members">
+								{#each l.members as name, i (i)}{#if i}<span class="sep">·</span>{/if}<a href={linkSearch(name, l.kind)}>{name}</a>{/each}
+							</span>
+							<span class="weight" title="Score">{l.score}</span>
+							{#if c.canTag}
+								<form method="POST" action="?/linkVote#community" class="votes" use:enhance>
+									<input type="hidden" name="linkId" value={l.id} />
+									<button name="vote" value={l.mine === 1 ? '0' : '1'} class:on={l.mine === 1} aria-pressed={l.mine === 1} title="Fits">
+										<ChevronUp size={14} /><span class="sr-only">Fits</span>
+									</button>
+									<button name="vote" value={l.mine === -1 ? '0' : '-1'} class:on={l.mine === -1} aria-pressed={l.mine === -1} title="Doesn't fit">
+										<ChevronDown size={14} /><span class="sr-only">Doesn't fit</span>
+									</button>
+								</form>
+							{/if}
+							{#if isAdmin}
+								<form method="POST" action="?/removeLink#community" class="votes" use:enhance>
+									<input type="hidden" name="linkId" value={l.id} />
+									<button class="remove" title="Remove this link"><X size={13} /><span class="sr-only">Remove</span></button>
+								</form>
+							{/if}
+						</li>
+					{/each}
+				</ul>
+			{/if}
+
+			{#if form?.community}<p class="form-error" role="alert">{form.community}</p>{/if}
+
+			{#if c.canTag}
+				<div class="editors">
+					<form method="POST" action="?/tag#community" class="add" use:enhance>
+						<input type="hidden" name="vote" value="1" />
+						<input
+							name="name"
+							list="tag-suggestions"
+							maxlength="40"
+							required
+							autocomplete="off"
+							placeholder="Add a tag, e.g. found family or character:rem"
+							aria-label="New tag"
+							value={form?.name ?? ''}
+						/>
+						{#if account.user?.showAdult}
+							<label class="check"><input type="checkbox" name="adult" value="1" /> 18+</label>
+						{/if}
+						<button class="btn ghost small"><Plus size={15} /> Tag</button>
+					</form>
+					<datalist id="tag-suggestions">
+						{#each c.suggestions as name (name)}<option value={name}></option>{/each}
+					</datalist>
+
+					{#if c.linkNames.length}
+						<form method="POST" action="?/link#community" class="add" use:enhance>
+							<select name="kind" aria-label="Kind of link">
+								{#each c.linkNames as k (k)}<option value={k}>{k}</option>{/each}
+							</select>
+							<input
+								name="members"
+								required
+								autocomplete="off"
+								placeholder="Tags to link, in order: rabbit, eat, carrot"
+								aria-label="Tags to link, separated by commas"
+								value={form?.members ?? ''}
+							/>
+							<button class="btn ghost small"><Link2 size={15} /> Link</button>
+						</form>
+						{#if c.linkable.length}
+							<details class="linkable">
+								<summary>Tags on this title you can link</summary>
+								<p>{c.linkable.join(', ')}</p>
+							</details>
+						{/if}
+					{/if}
+				</div>
+			{:else if c.blocked}
+				<p class="muted">Tagging is turned off for your account.</p>
+			{:else if !account.user}
+				<p class="muted"><a href="/login?next={encodeURIComponent(data.path)}">Sign in</a> to add tags and link them.</p>
+			{/if}
+		</section>
 
 		<section class="watch">
 			<h2>{SITE.linksTitle}</h2>
@@ -294,6 +421,142 @@
 	.chip.score {
 		color: var(--gold);
 		font-weight: 600;
+	}
+	.ctag {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		padding: 2px 4px 2px 10px;
+		border-radius: 999px;
+		font-size: 0.8rem;
+		background: var(--surface);
+		border: 1px solid var(--border);
+		color: var(--muted);
+	}
+	.ctag > a:hover,
+	.clinks a:hover {
+		color: var(--accent);
+	}
+	.ctag:not(:has(form)) {
+		padding-right: 10px;
+	}
+	.faded {
+		opacity: 0.55;
+	}
+	.votes {
+		display: inline-flex;
+	}
+	.votes button {
+		display: inline-grid;
+		place-items: center;
+		width: 22px;
+		height: 22px;
+		border: 0;
+		border-radius: 50%;
+		background: none;
+		color: var(--faint);
+		cursor: pointer;
+	}
+	.votes button:hover {
+		color: var(--text);
+		background: var(--surface-2);
+	}
+	.votes button.on {
+		color: var(--accent);
+	}
+	.votes .remove:hover {
+		color: #fb7185;
+	}
+	.clinks {
+		margin: 0;
+		padding: 0;
+		list-style: none;
+		display: grid;
+		gap: 6px;
+	}
+	.clinks li {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 6px;
+		font-size: 0.85rem;
+	}
+	.kind {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		padding: 1px 8px;
+		border-radius: 6px;
+		background: var(--accent-soft);
+		color: var(--accent);
+		font-size: 0.75rem;
+		font-weight: 600;
+	}
+	.members {
+		color: var(--text);
+	}
+	.sep {
+		margin: 0 5px;
+		color: var(--faint);
+	}
+	.editors {
+		display: grid;
+		gap: 8px;
+	}
+	.add {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 8px;
+	}
+	.add input:not([type]),
+	.add select {
+		height: 34px;
+		padding: 0 10px;
+		border-radius: 8px;
+		border: 1px solid var(--border);
+		background: var(--surface);
+		color: var(--text);
+		font-size: 0.85rem;
+	}
+	.add input:not([type]) {
+		flex: 1;
+		min-width: 200px;
+	}
+	.add input:focus,
+	.add select:focus {
+		border-color: var(--accent);
+		outline: 0;
+	}
+	.add .btn.small {
+		height: 34px;
+		padding: 0 12px;
+		font-size: 0.82rem;
+	}
+	.check {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		font-size: 0.8rem;
+		color: var(--muted);
+	}
+	.linkable summary {
+		width: fit-content;
+		font-size: 0.8rem;
+		color: var(--muted);
+		cursor: pointer;
+	}
+	.linkable p {
+		margin-top: 6px;
+		font-size: 0.8rem;
+		color: var(--muted);
+	}
+	.form-error {
+		font-size: 0.85rem;
+		color: #fb7185;
+	}
+	.muted a {
+		color: var(--accent);
 	}
 	.next {
 		color: var(--accent);
