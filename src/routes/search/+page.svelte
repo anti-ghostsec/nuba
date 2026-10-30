@@ -4,13 +4,14 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import Card from '$lib/components/Card.svelte';
+	import Picker from '$lib/components/Picker.svelte';
 	import { SITE } from '$lib/site';
 
 	let { data } = $props();
 
 	const q = $derived(data.query);
-	const selects = $derived(data.filters.filter((f) => !f.multi));
-	const chips = $derived(data.filters.filter((f) => f.multi));
+	const fields = $derived(data.filters.filter((f) => !f.multi || f.picker));
+	const chips = $derived(data.filters.filter((f) => f.multi && !f.picker));
 	const filtered = $derived(!!q.text || !!q.sort || Object.keys(q.filters).length > 0);
 	const count = $derived(data.result.total);
 
@@ -43,7 +44,7 @@
 	<form
 		class="filters"
 		action="/search"
-		onchange={(e) => apply(e.currentTarget)}
+		onchange={(e) => (e.target as HTMLInputElement).name && apply(e.currentTarget)}
 		onsubmit={(e) => {
 			e.preventDefault();
 			apply(e.currentTarget);
@@ -57,14 +58,21 @@
 					<input name="q" type="search" value={q.text} placeholder={SITE.searchPlaceholder} autocomplete="off" />
 				</span>
 			</label>
-			{#each selects as f (f.key)}
-				<label class="field">
-					<span>{f.label}</span>
-					<select name={f.key} value={q.filters[f.key]?.[0] ?? ''}>
-						<option value="">Any</option>
-						{#each f.options as o (o.value)}<option value={o.value}>{o.label}</option>{/each}
-					</select>
-				</label>
+			{#each fields as f (f.key)}
+				{#if f.picker}
+					<div class="field">
+						<span>{f.label}</span>
+						<Picker filter={f} selected={q.filters[f.key] ?? []} />
+					</div>
+				{:else}
+					<label class="field">
+						<span>{f.label}</span>
+						<select name={f.key} value={q.filters[f.key]?.[0] ?? ''}>
+							<option value="">Any</option>
+							{#each f.options as o (o.value)}<option value={o.value}>{o.label}</option>{/each}
+						</select>
+					</label>
+				{/if}
 			{/each}
 			<label class="field">
 				<span>Sort by</span>

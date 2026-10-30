@@ -1,4 +1,5 @@
 import type { Filter, Option, SearchQuery } from '$lib/types';
+import { titles } from './crawl';
 
 // Search filters and the "loose spelling" variants AniList is queried with.
 
@@ -76,6 +77,24 @@ export const FILTERS: Filter[] = [
 	}
 ];
 
+/**
+ * The fixed filters plus Tags and Studio, whose options come from the local
+ * title index (empty until it has been built, which hides them).
+ */
+export function allFilters(): Filter[] {
+	const list = (key: string, min: number) => titles.facetValues(key, min).map((v) => ({ value: v, label: v }));
+	const [format, year, season, status, genre] = FILTERS;
+	return [
+		format,
+		year,
+		season,
+		status,
+		{ key: 'tag', label: 'Tags', multi: true, picker: true, options: list('tag', 5) },
+		{ key: 'studio', label: 'Studio', picker: true, options: list('studio', 3) },
+		genre
+	].filter((f) => f.options.length);
+}
+
 export const SORTS: Option[] = opts([
 	['POPULARITY_DESC', 'Popular'],
 	['TRENDING_DESC', 'Trending'],
@@ -113,11 +132,13 @@ export function variants(text: string, max = 10): string[] {
 /** GraphQL variables for the filters, ignoring any value not on the list. */
 export function filterVariables(query: SearchQuery) {
 	const pick = (key: string) => {
-		const allowed = FILTERS.find((f) => f.key === key)!.options;
+		const allowed = FILTERS.find((f) => f.key === key)?.options;
+		if (!allowed) return query.filters[key] ?? [];
 		return (query.filters[key] ?? []).filter((v) => allowed.some((o) => o.value === v));
 	};
 	const [format, year, season, status] = ['format', 'year', 'season', 'status'].map((k) => pick(k)[0]);
 	const genres = pick('genre');
+	const tags = pick('tag');
 
 	// Unused filters must be left out entirely: AniList treats an explicit
 	// null as a value (null isAdult matches nothing, null lists error out).
@@ -127,7 +148,8 @@ export function filterVariables(query: SearchQuery) {
 		...(year && { year: Number(year) }),
 		...(season && { season }),
 		...(status && { status }),
-		...(genres.length && { genres })
+		...(genres.length && { genres }),
+		...(tags.length && { tags })
 	};
 }
 

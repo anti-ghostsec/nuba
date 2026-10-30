@@ -13,7 +13,7 @@ section only shows official services listed by the catalog.
 - Home page with a hero carousel, shelves, a top-ranked list and a release schedule
   in the viewer's timezone (whatever the catalog provides)
 - Typo-tolerant search ("narto" finds Naruto) with filters for format, year, season,
-  status, genre and sort, served from a local title index so it is instant and doesn't
+  status, tags, studio, genre and sort, served from a local title index so it is instant and doesn't
   use the catalog's rate limit
 - Browsing and detail pages with outbound links and recommendations
 - Optional adult titles: a signed-in, self-declared 18+ setting, off by default

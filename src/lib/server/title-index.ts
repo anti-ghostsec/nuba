@@ -84,6 +84,7 @@ export class TitleIndex {
 	/** Every distinct word in any name → the items that use it. */
 	private words = new Map<string, Set<string>>();
 	private cache = new Map<string, { id: string; score: number }[]>();
+	private facetCache = new Map<string, string[]>();
 	private loaded = false;
 
 	constructor(private catalog: string) {}
@@ -138,6 +139,29 @@ export class TitleIndex {
 		})();
 		for (const r of records) this.add(r);
 		this.cache.clear();
+		this.facetCache.clear();
+	}
+
+	/**
+	 * Every value of a facet used by at least `min` titles, A–Z, for filter
+	 * menus. Only non-adult titles count, so adult-only tags stay out.
+	 */
+	facetValues(key: string, min = 1): string[] {
+		this.load();
+		const cacheKey = `${key}:${min}`;
+		const cached = this.facetCache.get(cacheKey);
+		if (cached) return cached;
+		const counts = new Map<string, number>();
+		for (const { record } of this.entries.values()) {
+			if (record.item.adult) continue;
+			for (const v of record.facets[key] ?? []) counts.set(v, (counts.get(v) ?? 0) + 1);
+		}
+		const values = [...counts]
+			.filter(([, n]) => n >= min)
+			.map(([v]) => v)
+			.sort((a, b) => a.localeCompare(b));
+		this.facetCache.set(cacheKey, values);
+		return values;
 	}
 
 	/** Small JSON blob an adapter can keep its sync progress in. */
@@ -215,7 +239,8 @@ export class TitleIndex {
 
 	search(q: IndexQuery): Item[] {
 		this.load();
-		const hits = this.match(q.text).filter(({ id }) => {
+		const all = q.text.trim() ? this.match(q.text) : [...this.entries.keys()].map((id) => ({ id, score: 0 }));
+		const hits = all.filter(({ id }) => {
 			const r = this.entries.get(id)!.record;
 			if (r.item.adult && !q.adult) return false;
 			for (const [key, values] of Object.entries(q.filters)) {

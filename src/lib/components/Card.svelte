@@ -36,12 +36,18 @@
 		overflow: hidden;
 		/* The cover's dominant color fills the space until the image arrives. */
 		background: var(--ph);
+		/* Clip the zoomed cover to the rounded corners on the GPU too. */
+		isolation: isolate;
 	}
 	.poster img {
 		width: 100%;
 		height: 100%;
 		object-fit: cover;
 		transition: transform 0.4s var(--ease);
+		/* Stay on one compositing layer, so the browser doesn't re-draw (and
+		   visibly snap) the image when the zoom-out finishes. */
+		will-change: transform;
+		backface-visibility: hidden;
 	}
 	.poster::after {
 		content: '';

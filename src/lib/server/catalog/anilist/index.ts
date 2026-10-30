@@ -5,7 +5,7 @@ import { NotFound, query } from './client';
 import { DETAIL, HOME, searchQuery } from './queries';
 import { titles, startCrawler } from './crawl';
 import { FORMATS } from './format';
-import { FILTERS, SORTS, filterVariables, sortVariable, variants } from './search';
+import { SORTS, allFilters, filterVariables, sortVariable, variants } from './search';
 import { currentSeason } from './season';
 
 // AniList → Nuba. Everything AniList-specific stays in this folder.
@@ -93,7 +93,9 @@ export const anilist: Catalog = {
 	name: 'AniList',
 	url: 'https://anilist.co',
 	imageHosts: ['s4.anilist.co', 'img.anili.st'],
-	filters: FILTERS,
+	get filters() {
+		return allFilters();
+	},
 	sorts: SORTS,
 	start: startCrawler,
 
@@ -132,12 +134,14 @@ export const anilist: Catalog = {
 
 	async search(q) {
 		// Text searches use the local title index once it's built: typo-tolerant,
-		// instant, and free of the rate limit.
-		if (q.text && titles.getState<{ complete: boolean }>()?.complete) {
+		// instant, and free of the rate limit. So do Studio, which AniList's
+		// search can't filter by, and Tags, where every picked tag must match.
+		const local = q.text || q.filters.studio?.length || q.filters.tag?.length;
+		if (local && titles.getState<{ ready?: boolean }>()?.ready) {
 			const all = titles.search({
 				text: q.text,
 				filters: q.filters,
-				multi: new Set(FILTERS.filter((f) => f.multi).map((f) => f.key)),
+				multi: new Set(allFilters().filter((f) => f.multi).map((f) => f.key)),
 				adult: q.adult,
 				sort: LOCAL_SORTS[q.sort] ?? 'relevance'
 			});

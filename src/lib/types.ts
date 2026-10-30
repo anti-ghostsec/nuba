@@ -76,8 +76,10 @@ export interface Filter {
 	key: string;
 	label: string;
 	options: Option[];
-	/** Shown as toggle chips that can be combined, instead of a dropdown. */
+	/** Several values can be picked; an item must have all of them. */
 	multi?: boolean;
+	/** Long list: shown as chips when short, or a dropdown with a search box when `picker`. */
+	picker?: boolean;
 }
 
 export interface SearchQuery {

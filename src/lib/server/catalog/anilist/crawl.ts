@@ -11,7 +11,11 @@ import { FORMATS } from './format';
 export const titles = new TitleIndex('anilist');
 
 const FIELDS = `id updatedAt isAdult popularity format status season seasonYear startDate { year } episodes
-	averageScore genres synonyms title { romaji english native } coverImage { large extraLarge color }`;
+	averageScore genres synonyms title { romaji english native } coverImage { large extraLarge color }
+	studios(isMain: true) { nodes { name } } tags { name rank isMediaSpoiler }`;
+
+/** Bump when FIELDS or toRecord change, to refetch everything in the background. */
+const VERSION = 2;
 
 /** Ten pages of 50 per request: AniList counts requests, not titles. */
 const PAGES = 10;
@@ -59,9 +63,14 @@ interface Raw {
 	synonyms: string[];
 	title: { romaji: string | null; english: string | null; native: string | null };
 	coverImage: { large: string | null; extraLarge: string | null; color: string | null };
+	studios: { nodes: { name: string }[] };
+	tags: { name: string; rank: number; isMediaSpoiler: boolean }[];
 }
 
 interface State {
+	version: number;
+	/** A full pass has finished at some point, so the index can answer searches. */
+	ready: boolean;
 	/** Progress through the first full pass: which slice, and its next page. */
 	slice: number;
 	page: number;
@@ -97,7 +106,10 @@ function toRecord(m: Raw): IndexRecord {
 			year: year ? [String(year)] : [],
 			season: m.season ? [m.season] : [],
 			status: m.status ? [m.status] : [],
-			genre: m.genres
+			genre: m.genres,
+			studio: m.studios.nodes.map((s) => s.name),
+			// Spoiler tags would give away the plot in the filter list.
+			tag: m.tags.filter((t) => !t.isMediaSpoiler && t.rank >= 40).map((t) => t.name)
 		},
 		popularity: m.popularity ?? 0
 	};
@@ -135,6 +147,7 @@ async function step(state: State): Promise<'more' | 'idle'> {
 		}
 		if (state.slice >= all.length) {
 			state.complete = true;
+			state.ready = true;
 			console.log(`Title index ready: ${titles.size} titles.`);
 		}
 		titles.setState(state);
@@ -163,7 +176,13 @@ export function startCrawler() {
 	g.__nubaCrawler = true;
 
 	(async () => {
-		const state: State = titles.getState<State>() ?? { slice: 0, page: 1, complete: false, updatedAt: 0 };
+		const saved = titles.getState<Partial<State>>();
+		let state: State = { version: 1, ready: false, slice: 0, page: 1, complete: false, updatedAt: 0, ...saved };
+		if (state.version !== VERSION) {
+			// Refetch everything, still answering searches from the old copy meanwhile.
+			state = { ...state, version: VERSION, ready: !!saved?.complete || !!saved?.ready, slice: 0, page: 1, complete: false };
+			titles.setState(state);
+		}
 		if (!state.complete) console.log(`Building title index from AniList (${titles.size} so far)…`);
 		for (;;) {
 			try {

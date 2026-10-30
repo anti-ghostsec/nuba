@@ -37,7 +37,7 @@ query Home($season: MediaSeason, $year: Int, $from: Int, $to: Int) {
 }
 ${CARD}`;
 
-const FILTER_ARGS = `type: ANIME, isAdult: $adult, format_in: $format, seasonYear: $year, season: $season, status: $status, genre_in: $genres`;
+const FILTER_ARGS = `type: ANIME, isAdult: $adult, format_in: $format, seasonYear: $year, season: $season, status: $status, genre_in: $genres, tag_in: $tags`;
 
 /**
  * One request that runs the search itself plus a few looser spellings of it
@@ -51,7 +51,7 @@ export function searchQuery(variants: number) {
 		(_, i) => `v${i}: Page(perPage: 20) { media(search: $v${i}, ${FILTER_ARGS}, sort: POPULARITY_DESC) { ...card } }`
 	).join('\n\t');
 	return `
-query Search($search: String, $page: Int, $sort: [MediaSort], $adult: Boolean, $format: [MediaFormat], $year: Int, $season: MediaSeason, $status: MediaStatus, $genres: [String]${vars}) {
+query Search($search: String, $page: Int, $sort: [MediaSort], $adult: Boolean, $format: [MediaFormat], $year: Int, $season: MediaSeason, $status: MediaStatus, $genres: [String], $tags: [String]${vars}) {
 	main: Page(page: $page, perPage: 30) {
 		pageInfo { total hasNextPage }
 		media(search: $search, ${FILTER_ARGS}, sort: $sort) { ...card }
