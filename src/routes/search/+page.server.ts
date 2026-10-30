@@ -1,20 +1,32 @@
 import { error } from '@sveltejs/kit';
 import { CatalogUnavailable, catalog } from '$lib/server/catalog';
-import type { ResultPage } from '$lib/types';
+import type { ResultPage, SearchQuery } from '$lib/types';
 import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ url }) => {
-	const q = (url.searchParams.get('q') ?? '').trim().slice(0, 100);
-	const page = Math.min(Math.max(Number(url.searchParams.get('page')) || 1, 1), 50);
+export const load: PageServerLoad = async ({ url, locals }) => {
+	const params = url.searchParams;
+	const filters: Record<string, string[]> = {};
+	for (const f of catalog.filters) {
+		const values = params.getAll(f.key).filter((v) => f.options.some((o) => o.value === v));
+		if (values.length) filters[f.key] = f.multi ? values : values.slice(0, 1);
+	}
+
+	const query: SearchQuery = {
+		text: (params.get('q') ?? '').trim().slice(0, 100),
+		page: Math.min(Math.max(Number(params.get('page')) || 1, 1), 50),
+		filters,
+		sort: catalog.sorts.some((s) => s.value === params.get('sort')) ? params.get('sort')! : '',
+		adult: locals.user?.showAdult ?? false
+	};
 
 	let result: ResultPage;
 	try {
-		result = q ? await catalog.search(q, page) : await catalog.browse(page);
+		result = await catalog.search(query);
 	} catch (e) {
 		if (!(e instanceof CatalogUnavailable)) throw e;
 		console.error('Catalog search failed:', e.message);
 		error(503, `${catalog.name} is not responding right now. Try again in a moment.`);
 	}
 
-	return { q, page, hasNext: result.hasNext, results: result.items };
+	return { query, result, filters: catalog.filters, sorts: catalog.sorts };
 };

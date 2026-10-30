@@ -6,6 +6,8 @@ fragment card on Media {
 	bannerImage
 	format
 	episodes
+	isAdult
+	popularity
 	seasonYear
 	startDate { year }
 	averageScore
@@ -35,23 +37,29 @@ query Home($season: MediaSeason, $year: Int, $from: Int, $to: Int) {
 }
 ${CARD}`;
 
-export const SEARCH = `
-query Search($search: String, $page: Int) {
-	Page(page: $page, perPage: 30) {
-		pageInfo { hasNextPage }
-		media(search: $search, type: ANIME, isAdult: false, sort: [SEARCH_MATCH, POPULARITY_DESC]) { ...card }
-	}
-}
-${CARD}`;
+const FILTER_ARGS = `type: ANIME, isAdult: $adult, format_in: $format, seasonYear: $year, season: $season, status: $status, genre_in: $genres`;
 
-export const POPULAR = `
-query Popular($page: Int) {
-	Page(page: $page, perPage: 30) {
-		pageInfo { hasNextPage }
-		media(type: ANIME, isAdult: false, sort: POPULARITY_DESC) { ...card }
+/**
+ * One request that runs the search itself plus a few looser spellings of it
+ * (see search.ts), so typos and partial titles still find things without
+ * spending more of the rate limit.
+ */
+export function searchQuery(variants: number) {
+	const vars = Array.from({ length: variants }, (_, i) => `, $v${i}: String`).join('');
+	const extra = Array.from(
+		{ length: variants },
+		(_, i) => `v${i}: Page(perPage: 20) { media(search: $v${i}, ${FILTER_ARGS}, sort: POPULARITY_DESC) { ...card } }`
+	).join('\n\t');
+	return `
+query Search($search: String, $page: Int, $sort: [MediaSort], $adult: Boolean, $format: [MediaFormat], $year: Int, $season: MediaSeason, $status: MediaStatus, $genres: [String]${vars}) {
+	main: Page(page: $page, perPage: 30) {
+		pageInfo { total hasNextPage }
+		media(search: $search, ${FILTER_ARGS}, sort: $sort) { ...card }
 	}
+	${extra}
 }
 ${CARD}`;
+}
 
 export const DETAIL = `
 query Detail($id: Int) {

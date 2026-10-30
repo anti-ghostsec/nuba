@@ -18,7 +18,7 @@
 	onMount(() => (enhanced = true));
 </script>
 
-<form method="POST" action="/settings" class="prefs" class:compact onsubmit={(e) => enhanced && e.preventDefault()}>
+<form method="POST" action="/settings?/prefs" class="prefs" class:compact onsubmit={(e) => enhanced && e.preventDefault()}>
 	<input type="hidden" name="redirectTo" value={page.url.pathname + page.url.search} />
 
 	<fieldset>

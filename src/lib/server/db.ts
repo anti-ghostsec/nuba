@@ -29,7 +29,8 @@ const MIGRATIONS = [
 		snapshot TEXT NOT NULL,
 		PRIMARY KEY (user_id, item_id)
 	);
-	`
+	`,
+	`ALTER TABLE users ADD COLUMN show_adult INTEGER NOT NULL DEFAULT 0;`
 ];
 
 let db: Database.Database | undefined;

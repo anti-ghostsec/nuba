@@ -2,7 +2,7 @@
 	import '@fontsource-variable/inter';
 	import '../app.css';
 	import { onMount } from 'svelte';
-	import { afterNavigate } from '$app/navigation';
+	import { afterNavigate, onNavigate } from '$app/navigation';
 	import { page } from '$app/state';
 	import { provideAccount, providePrefs } from '$lib/context';
 	import { PREFS_COOKIE, accentInk } from '$lib/prefs';
@@ -43,6 +43,18 @@
 	});
 
 	afterNavigate(() => (navOpen = false));
+
+	// Cross-fade between pages where the browser supports it.
+	onNavigate((navigation) => {
+		if (!document.startViewTransition || prefs.reduceMotion || navigation.from?.url.href === navigation.to?.url.href) return;
+		if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+		return new Promise((resolve) => {
+			document.startViewTransition(async () => {
+				resolve();
+				await navigation.complete;
+			});
+		});
+	});
 </script>
 
 <svelte:window onkeydown={(e) => e.key === 'Escape' && (navOpen = false)} />

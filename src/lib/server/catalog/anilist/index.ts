@@ -2,7 +2,8 @@ import { stripHtml } from '$lib/format';
 import type { Item, ItemDetail, Release, ResultPage } from '$lib/types';
 import type { Catalog } from '../types';
 import { NotFound, query } from './client';
-import { DETAIL, HOME, POPULAR, SEARCH } from './queries';
+import { DETAIL, HOME, searchQuery } from './queries';
+import { FILTERS, SORTS, filterVariables, sortVariable, variants } from './search';
 import { currentSeason } from './season';
 
 // AniList → Nuba. Everything AniList-specific stays in this folder.
@@ -14,6 +15,8 @@ interface Media {
 	bannerImage?: string | null;
 	format: string | null;
 	episodes: number | null;
+	isAdult?: boolean;
+	popularity?: number | null;
 	seasonYear?: number | null;
 	startDate?: { year: number | null };
 	averageScore?: number | null;
@@ -23,7 +26,6 @@ interface Media {
 
 interface MediaDetail extends Media {
 	siteUrl: string;
-	isAdult: boolean;
 	duration: number | null;
 	status: string | null;
 	season: string | null;
@@ -37,7 +39,7 @@ interface Airing {
 	id: number;
 	episode: number;
 	airingAt: number;
-	media: Media & { isAdult: boolean };
+	media: Media;
 }
 
 type Page<T> = { media?: T[]; airingSchedules?: T[] };
@@ -74,19 +76,22 @@ function toItem(m: Media, summaryMax = 0): Item {
 		score: m.averageScore ? m.averageScore / 10 : null,
 		tags: m.genres ?? [],
 		summary: summaryMax ? stripHtml(m.description ?? null, summaryMax) : null,
-		total: m.episodes
+		total: m.episodes,
+		...(m.isAdult && { adult: true })
 	};
 }
 
-async function page(q: string, variables: Record<string, unknown>, ttl?: number): Promise<ResultPage> {
-	const data = await query<{ Page: { pageInfo: { hasNextPage: boolean }; media: Media[] } }>(q, variables, ttl);
-	return { items: data.Page.media.map((m) => toItem(m)), hasNext: data.Page.pageInfo.hasNextPage };
-}
+type SearchResult = { main: { pageInfo: { total: number; hasNextPage: boolean }; media: Media[] } } & Record<
+	string,
+	{ media: Media[] }
+>;
 
 export const anilist: Catalog = {
 	name: 'AniList',
 	url: 'https://anilist.co',
 	imageHosts: ['s4.anilist.co', 'img.anili.st'],
+	filters: FILTERS,
+	sorts: SORTS,
 
 	async home() {
 		const now = Math.floor(Date.now() / 1000);
@@ -121,9 +126,44 @@ export const anilist: Catalog = {
 		};
 	},
 
-	search: (search, p) => page(SEARCH, { search, page: p }),
+	async search(q) {
+		// Looser spellings only make sense on the first page of a text search.
+		const loose = q.text && q.page === 1 ? variants(q.text) : [];
+		const variables: Record<string, unknown> = {
+			...filterVariables(q),
+			...(q.text && { search: q.text }),
+			page: q.page,
+			sort: sortVariable(q)
+		};
+		loose.forEach((v, i) => (variables[`v${i}`] = v));
 
-	browse: (p) => page(POPULAR, { page: p }, 30 * 60_000),
+		const data = await query<SearchResult>(searchQuery(loose.length), variables, q.text ? undefined : 30 * 60_000);
+		const main = data.main.media;
+
+		// Extra matches go after the exact ones: those found by more spellings
+		// first, then the more popular.
+		const seen = new Set(main.map((m) => m.id));
+		const hits = new Map<number, { media: Media; count: number }>();
+		for (let i = 0; i < loose.length; i++) {
+			for (const m of data[`v${i}`]?.media ?? []) {
+				if (seen.has(m.id)) continue;
+				const hit = hits.get(m.id);
+				if (hit) hit.count++;
+				else hits.set(m.id, { media: m, count: 1 });
+			}
+		}
+		const extra = [...hits.values()]
+			.sort((a, b) => b.count - a.count || (b.media.popularity ?? 0) - (a.media.popularity ?? 0))
+			.map((h) => h.media);
+
+		return {
+			items: [...main, ...extra].map((m) => toItem(m)),
+			hasNext: data.main.pageInfo.hasNextPage,
+			// AniList's own total is capped and unreliable past one page, so only
+			// count when everything is on this page.
+			total: data.main.pageInfo.hasNextPage ? null : (q.page - 1) * 30 + main.length + extra.length
+		};
+	},
 
 	async item(id) {
 		if (!/^\d{1,9}$/.test(id)) return null;
@@ -135,7 +175,6 @@ export const anilist: Catalog = {
 			if (e instanceof NotFound) return null;
 			throw e;
 		}
-		if (m.isAdult) return null;
 
 		const item = toItem(m);
 		const facts = [

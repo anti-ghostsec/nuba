@@ -24,6 +24,8 @@ export interface Item {
 	summary: string | null;
 	/** Total units (episodes, chapters…), if known. */
 	total: number | null;
+	/** Adult-only. Hidden unless a signed-in user has turned it on. */
+	adult?: boolean;
 }
 
 export interface ItemDetail extends Item {
@@ -60,6 +62,32 @@ export interface HomeFeed {
 export interface ResultPage {
 	items: Item[];
 	hasNext: boolean;
+	/** Total matches, if the catalog knows. */
+	total: number | null;
+}
+
+export interface Option {
+	value: string;
+	label: string;
+}
+
+/** A search filter a catalog offers, e.g. Format, Year or Genre. */
+export interface Filter {
+	key: string;
+	label: string;
+	options: Option[];
+	/** Shown as toggle chips that can be combined, instead of a dropdown. */
+	multi?: boolean;
+}
+
+export interface SearchQuery {
+	text: string;
+	page: number;
+	/** Selected values, keyed by Filter.key. */
+	filters: Record<string, string[]>;
+	/** One of the catalog's sort values, or '' for its default. */
+	sort: string;
+	adult: boolean;
 }
 
 export type ListStatus = 'CURRENT' | 'PLANNING' | 'COMPLETED' | 'PAUSED' | 'DROPPED';
@@ -80,4 +108,5 @@ export interface ListItem {
 export interface User {
 	id: number;
 	username: string;
+	showAdult: boolean;
 }

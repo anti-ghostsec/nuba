@@ -48,7 +48,7 @@ export async function createUser(username: string, password: string): Promise<Us
 		const { lastInsertRowid } = getDb()
 			.prepare('INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)')
 			.run(username, hash, Date.now());
-		return { id: Number(lastInsertRowid), username };
+		return { id: Number(lastInsertRowid), username, showAdult: false };
 	} catch (e) {
 		if ((e as { code?: string }).code === 'SQLITE_CONSTRAINT_UNIQUE') return 'taken';
 		throw e;
@@ -56,12 +56,12 @@ export async function createUser(username: string, password: string): Promise<Us
 }
 
 export async function authenticate(username: string, password: string): Promise<User | null> {
-	const row = getDb().prepare('SELECT id, username, password_hash FROM users WHERE username = ?').get(username) as
-		| { id: number; username: string; password_hash: string }
-		| undefined;
+	const row = getDb()
+		.prepare('SELECT id, username, password_hash, show_adult FROM users WHERE username = ?')
+		.get(username) as { id: number; username: string; password_hash: string; show_adult: number } | undefined;
 
 	const ok = await verifyPassword(password, row?.password_hash ?? (await DUMMY_HASH));
-	return row && ok ? { id: row.id, username: row.username } : null;
+	return row && ok ? { id: row.id, username: row.username, showAdult: !!row.show_adult } : null;
 }
 
 const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');
@@ -94,8 +94,10 @@ export function userFromSession(token: string | undefined): User | null {
 	const db = getDb();
 	const id = hashToken(token);
 	const row = db
-		.prepare('SELECT s.expires_at, u.id, u.username FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ?')
-		.get(id) as { expires_at: number; id: number; username: string } | undefined;
+		.prepare(
+			'SELECT s.expires_at, u.id, u.username, u.show_adult FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ?'
+		)
+		.get(id) as { expires_at: number; id: number; username: string; show_adult: number } | undefined;
 
 	if (!row) return null;
 	if (row.expires_at < Date.now()) {
@@ -105,7 +107,12 @@ export function userFromSession(token: string | undefined): User | null {
 	if (row.expires_at - Date.now() < (SESSION_DAYS / 2) * DAY) {
 		db.prepare('UPDATE sessions SET expires_at = ? WHERE id = ?').run(Date.now() + SESSION_DAYS * DAY, id);
 	}
-	return { id: row.id, username: row.username };
+	return { id: row.id, username: row.username, showAdult: !!row.show_adult };
+}
+
+/** The user's own declaration that they are 18 or older. */
+export function setShowAdult(userId: number, on: boolean) {
+	getDb().prepare('UPDATE users SET show_adult = ? WHERE id = ?').run(on ? 1 : 0, userId);
 }
 
 // Simple in-memory brake on password guessing, per username. (Over Tor every

@@ -1,4 +1,4 @@
-import type { HomeFeed, ItemDetail, ResultPage } from '$lib/types';
+import type { Filter, HomeFeed, ItemDetail, Option, ResultPage, SearchQuery } from '$lib/types';
 
 /**
  * A data source for Nuba. Implement this to point Nuba at something else:
@@ -10,12 +10,14 @@ export interface Catalog {
 	url: string;
 	/** Hosts the image proxy may fetch from. */
 	imageHosts: string[];
+	/** Filters and sort orders offered on the search page. */
+	filters: Filter[];
+	sorts: Option[];
 
 	home(): Promise<HomeFeed>;
-	search(query: string, page: number): Promise<ResultPage>;
-	/** Default browsing order when there is no search query. */
-	browse(page: number): Promise<ResultPage>;
-	/** Returns null when the item does not exist or should not be shown. */
+	/** Search, or browse when the text is empty. Excludes adult items unless query.adult. */
+	search(query: SearchQuery): Promise<ResultPage>;
+	/** Returns null when the item does not exist. Adult items are returned with adult: true. */
 	item(id: string): Promise<ItemDetail | null>;
 }
 

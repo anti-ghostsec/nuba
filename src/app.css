@@ -217,3 +217,13 @@ p {
 	transition-duration: 0.01ms !important;
 	scroll-behavior: auto !important;
 }
+
+/* Page changes: a quick cross-fade, with the header held still. */
+::view-transition-old(root),
+::view-transition-new(root) {
+	animation-duration: 0.18s;
+	animation-timing-function: var(--ease);
+}
+.header {
+	view-transition-name: header;
+}

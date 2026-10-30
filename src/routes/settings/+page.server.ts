@@ -1,10 +1,11 @@
-import { redirect } from '@sveltejs/kit';
+import { fail, redirect } from '@sveltejs/kit';
 import { PREFS_COOKIE, sanitizePrefs } from '$lib/prefs';
+import { setShowAdult } from '$lib/server/users';
 import type { Actions } from './$types';
 
 // Only used when JavaScript is off; otherwise the browser writes the cookie itself.
 export const actions: Actions = {
-	default: async ({ request, cookies, locals, url }) => {
+	prefs: async ({ request, cookies, locals, url }) => {
 		const form = await request.formData();
 		const accent = form.get('accent') === 'custom' ? form.get('accentCustom') : form.get('accent');
 
@@ -30,5 +31,12 @@ export const actions: Actions = {
 
 		const target = String(form.get('redirectTo') ?? '/settings');
 		redirect(303, target.startsWith('/') && !target.startsWith('//') ? target : '/settings');
+	},
+
+	content: async ({ request, locals }) => {
+		if (!locals.user) return fail(401, { message: 'Sign in to change this.' });
+		const form = await request.formData();
+		setShowAdult(locals.user.id, form.get('showAdult') === '1');
+		redirect(303, '/settings#content');
 	}
 };

@@ -3,7 +3,7 @@ import { CatalogUnavailable, catalog } from '$lib/server/catalog';
 import type { ItemDetail } from '$lib/types';
 import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ params }) => {
+export const load: PageServerLoad = async ({ params, locals }) => {
 	let item: ItemDetail | null;
 	try {
 		item = await catalog.item(params.id);
@@ -14,5 +14,10 @@ export const load: PageServerLoad = async ({ params }) => {
 	}
 	if (!item) error(404, 'Not found');
 
-	return { item, sourceName: catalog.name };
+	const adult = locals.user?.showAdult ?? false;
+	if (item.adult && !adult) {
+		error(404, locals.user ? 'This title is 18+. You can turn on adult titles in Settings.' : 'Not found');
+	}
+
+	return { item: { ...item, related: item.related.filter((r) => adult || !r.adult) }, sourceName: catalog.name };
 };

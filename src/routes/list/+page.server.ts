@@ -35,7 +35,7 @@ export const actions: Actions = {
 			if (e instanceof CatalogUnavailable) return fail(503, { message: 'Could not reach the catalog. Try again.' });
 			throw e;
 		}
-		if (!item) return fail(404, { message: 'That item no longer exists.' });
+		if (!item || (item.adult && !locals.user.showAdult)) return fail(404, { message: 'That item no longer exists.' });
 
 		const capped = item.total ? Math.min(progress, item.total) : progress;
 		const entry = saveEntry(locals.user.id, item, status, capped);

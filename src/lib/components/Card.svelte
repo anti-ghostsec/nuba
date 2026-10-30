@@ -18,6 +18,7 @@
 		<img src={img(item.cover)} alt="" loading="lazy" decoding="async" width="230" height="345" />
 		{#if rating}<span class="score">{rating}</span>{/if}
 		{#if entry}<span class="status">{SITE.statuses[entry.status]}</span>{/if}
+		{#if item.adult}<span class="adult" title="Adult title">18+</span>{/if}
 	</div>
 	<p class="name" {title}>{title}</p>
 	<p class="meta">{[item.kind, item.year].filter(Boolean).join(' • ')}</p>
@@ -79,6 +80,17 @@
 		color: var(--accent-ink);
 		font-size: 0.72rem;
 		font-weight: 600;
+	}
+	.adult {
+		position: absolute;
+		bottom: 8px;
+		left: 8px;
+		padding: 2px 6px;
+		border-radius: 6px;
+		background: #e11d48;
+		color: #fff;
+		font-size: 0.7rem;
+		font-weight: 700;
 	}
 	.name {
 		margin-top: 9px;
