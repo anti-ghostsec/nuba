@@ -102,6 +102,10 @@ export function endSession(cookies: Cookies) {
 	cookies.delete(SESSION_COOKIE, { path: '/' });
 }
 
+export function purgeExpiredSessions() {
+	getDb().prepare('DELETE FROM sessions WHERE expires_at < ?').run(Date.now());
+}
+
 /** Look up the session's user, sliding the expiry forward for active users. */
 export function userFromSession(token: string | undefined): User | null {
 	if (!token) return null;
@@ -198,6 +202,18 @@ export function userById(userId: number): User | null {
 /** The user's own declaration that they are 18 or older. */
 export function setShowAdult(userId: number, on: boolean) {
 	getDb().prepare('UPDATE users SET show_adult = ? WHERE id = ?').run(on ? 1 : 0, userId);
+}
+
+// Site-wide brake on sign-ups (per visitor is impossible over Tor).
+const signups: number[] = [];
+
+/** Whether a new account may be made now; counts it if so. */
+export function allowSignup(perHour: number): boolean {
+	const hourAgo = Date.now() - 3600_000;
+	while (signups.length && signups[0] < hourAgo) signups.shift();
+	if (signups.length >= perHour) return false;
+	signups.push(Date.now());
+	return true;
 }
 
 // Simple in-memory brake on password guessing, per username. (Over Tor every

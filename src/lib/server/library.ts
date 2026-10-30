@@ -32,10 +32,14 @@ export function entryFor(userId: number, itemId: string): ListEntry | null {
 	return row ? toListItem(row).entry : null;
 }
 
+/** Only the card fields, even when handed a full ItemDetail. */
+export function cardOf(item: Item): Item {
+	const { id, title, altTitles, cover, coverLarge, color, banner, kind, year, score, tags, total, adult } = item;
+	return { id, title, altTitles, cover, coverLarge, color, banner, kind, year, score, tags, total, summary: null, ...(adult && { adult }) };
+}
+
 export function saveEntry(userId: number, item: Item, status: ListStatus, progress: number): ListEntry {
-	// Keep only the card fields, even if we were handed a full ItemDetail.
-	const { id, title, altTitles, cover, coverLarge, color, banner, kind, year, score, tags, total } = item;
-	const snapshot: Item = { id, title, altTitles, cover, coverLarge, color, banner, kind, year, score, tags, total, summary: null };
+	const snapshot = cardOf(item);
 	const updatedAt = Date.now();
 	getDb()
 		.prepare(

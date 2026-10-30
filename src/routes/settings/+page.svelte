@@ -2,6 +2,9 @@
 	import Check from '@lucide/svelte/icons/check';
 	import Pipette from '@lucide/svelte/icons/pipette';
 	import Search from '@lucide/svelte/icons/search';
+	import X from '@lucide/svelte/icons/x';
+	import Avatar from '$lib/components/Avatar.svelte';
+	import { img, titleOf } from '$lib/format';
 	import type { Snippet } from 'svelte';
 	import { onMount } from 'svelte';
 	import { enhance } from '$app/forms';
@@ -27,12 +30,21 @@
 
 	const sections = $derived([
 		{ id: 'account', label: 'Account' },
+		...(account.user ? [{ id: 'profile', label: 'Profile' }] : []),
 		{ id: 'appearance', label: 'Appearance' },
 		{ id: 'content', label: 'Content' },
 		...(account.user ? [{ id: 'data', label: 'Your data' }] : [])
 	]);
 
 	const note = (section: string) => (form?.section === section ? form : null);
+
+	// Picker forms save as soon as something is picked (with JavaScript).
+	const autosave = (e: Event) => (e.currentTarget as HTMLFormElement).requestSubmit();
+	let bio = $state('');
+	$effect(() => {
+		bio = data.profile?.bio ?? '';
+	});
+	const profileAccentPreset = $derived(!data.profile?.accent || ACCENTS.some((a) => a.value === data.profile?.accent));
 </script>
 
 <svelte:head><title>Settings · {SITE.name}</title></svelte:head>
@@ -134,6 +146,138 @@
 				<p class="hint"><a href="/login?next=/settings">Sign in</a> to change your username, password and account settings.</p>
 			{/if}
 		</section>
+
+		{#if account.user && data.profile}
+			{@const profile = data.profile}
+			<section class="panel" id="profile">
+				<h2>Profile</h2>
+
+				{#if data.hasAvatars}
+					{#snippet avatar()}
+						<div class="avatar-pick">
+							<Avatar username={account.user?.username ?? ''} image={profile.avatar} size={84} ring />
+							<form class="mini-search" data-sveltekit-noscroll data-sveltekit-keepfocus action="#profile">
+								<input type="hidden" name="fav" value={data.favSearch} />
+								<Search size={14} />
+								<input name="avatars" type="search" value={data.avatarSearch} placeholder="Search characters…" aria-label="Search characters" />
+							</form>
+							<form method="POST" action="?/avatar" class="choices" use:enhance onchange={autosave}>
+								<label class="choice letter" title="First letter">
+									<input type="radio" name="avatar" value="" checked={!profile.avatar} />
+									<span>{account.user?.username.charAt(0).toUpperCase()}</span>
+								</label>
+								{#each data.avatars as a (a.id)}
+									<label class="choice" title={a.label}>
+										<input type="radio" name="avatar" value={a.image} checked={profile.avatar === a.image} />
+										<img src={img(a.image)} alt={a.label} loading="lazy" width="48" height="48" />
+									</label>
+								{:else}
+									<p class="hint small">No characters found.</p>
+								{/each}
+								{#if !enhanced}<button class="btn ghost">Save</button>{/if}
+							</form>
+							{@render message('avatar')}
+						</div>
+					{/snippet}
+					{@render row('Avatar', 'Pick a character, or keep your first letter. Shown on your profile and in the menu.', false, avatar)}
+				{/if}
+
+				{#snippet status()}
+					<form method="POST" action="?/bio" class="inline" use:enhance>
+						<input name="bio" bind:value={bio} maxlength={data.bioMax} placeholder="Rewatching Frieren for the third time" />
+						<span class="counter">{bio.length}/{data.bioMax}</span>
+						<button class="btn ghost">Save</button>
+					</form>
+					{@render message('bio')}
+				{/snippet}
+				{@render row('Status', `One line under your name on your profile, up to ${data.bioMax} characters.`, false, status)}
+
+				{#snippet paccent()}
+					<form method="POST" action="?/profileAccent" class="swatches" use:enhance onchange={autosave}>
+						<label class="swatch site" style:--c="var(--accent)" title="Same as the site">
+							<input type="radio" name="profileAccent" value="" checked={!profile.accent} />
+							<span><Check size={14} strokeWidth={3} /></span>
+							<span class="sr-only">Same as the site</span>
+						</label>
+						{#each ACCENTS as a (a.value)}
+							<label class="swatch" style:--c={a.value} title={a.name}>
+								<input type="radio" name="profileAccent" value={a.value} checked={profile.accent === a.value} />
+								<span><Check size={14} strokeWidth={3} /></span>
+								<span class="sr-only">{a.name}</span>
+							</label>
+						{/each}
+						<label class="swatch custom" style:--c={profileAccentPreset ? 'transparent' : profile.accent} title="Custom color">
+							<input type="radio" name="profileAccent" value="custom" checked={!profileAccentPreset} tabindex="-1" />
+							<span><Pipette size={14} /></span>
+							<input type="color" name="profileAccentCustom" aria-label="Custom profile color" value={profile.accent ?? '#ff3d68'} />
+						</label>
+						{#if !enhanced}<button class="btn ghost">Save</button>{/if}
+					</form>
+					{@render message('profileAccent')}
+				{/snippet}
+				{@render row('Profile accent', 'Your avatar ring, name and highlights on your profile. Visitors see it too.', false, paccent)}
+
+				{#snippet favs()}
+					<div class="favs">
+						{#each data.favorites as f (f.id)}
+							<div class="fav">
+								<img src={img(f.cover)} alt="" width="34" height="48" />
+								<a href="/title/{f.id}">{titleOf(f, prefs.titleLang)}</a>
+								<form method="POST" action="/list?/favorite" use:enhance>
+									<input type="hidden" name="itemId" value={f.id} />
+									<input type="hidden" name="on" value="0" />
+									<input type="hidden" name="redirectTo" value="/settings#profile" />
+									<button class="icon-btn small" aria-label="Remove {f.title}"><X size={14} /></button>
+								</form>
+							</div>
+						{/each}
+						<p class="small hint">{data.favorites.length} / {data.favoritesMax}</p>
+						{#if data.favorites.length < data.favoritesMax}
+							<form class="mini-search wide" data-sveltekit-noscroll data-sveltekit-keepfocus action="#profile">
+								<input type="hidden" name="avatars" value={data.avatarSearch} />
+								<Search size={14} />
+								<input name="fav" type="search" value={data.favSearch} placeholder="Search a title to add…" aria-label="Search a title to add" />
+							</form>
+							{#each data.favResults.filter((r) => !data.favorites.some((f) => f.id === r.id)) as r (r.id)}
+								<form method="POST" action="/list?/favorite" class="fav result" use:enhance>
+									<img src={img(r.cover)} alt="" width="34" height="48" />
+									<span>{titleOf(r, prefs.titleLang)}</span>
+									<input type="hidden" name="itemId" value={r.id} />
+									<input type="hidden" name="on" value="1" />
+									<input type="hidden" name="redirectTo" value="/settings#profile" />
+									<button class="btn ghost small">Add</button>
+								</form>
+							{/each}
+						{/if}
+					</div>
+				{/snippet}
+				{@render row(
+					'Favorites',
+					`Up to ${data.favoritesMax} titles, newest first, shown on your profile. You can also add them from a title's page.`,
+					false,
+					favs
+				)}
+
+				{#snippet visibility()}
+					<form method="POST" action="?/public" class="seg" use:enhance>
+						<button name="public" value="0" aria-pressed={!profile.isPublic}>Private</button>
+						<button name="public" value="1" aria-pressed={profile.isPublic}>Public</button>
+					</form>
+					{@render message('public')}
+				{/snippet}
+				{@render row(
+					'Who sees your list',
+					'Private: your list, stats and favorites are only for you. Public: anyone with the link to your profile can see them. Your name, avatar and status are always visible.',
+					false,
+					visibility
+				)}
+
+				{#snippet view()}
+					<a class="btn ghost" href="/u/{account.user?.username}">View profile</a>
+				{/snippet}
+				{@render row('Your profile', 'See your page the way it shows.', false, view)}
+			</section>
+		{/if}
 
 		<section class="panel" id="appearance">
 			<h2>Appearance</h2>
@@ -557,6 +701,134 @@
 		padding: 0;
 	}
 
+	.avatar-pick {
+		display: grid;
+		justify-items: end;
+		gap: 10px;
+		width: 340px;
+	}
+	.mini-search {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		width: 100%;
+		height: 36px;
+		padding: 0 10px;
+		border-radius: 8px;
+		border: 1px solid var(--border);
+		background: var(--surface);
+		color: var(--muted);
+	}
+	.mini-search:focus-within {
+		border-color: var(--accent);
+	}
+	.mini-search input {
+		flex: 1;
+		min-width: 0;
+		border: 0;
+		outline: 0;
+		background: none;
+		color: var(--text);
+	}
+	.choices {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, 48px);
+		gap: 6px;
+		width: 100%;
+		max-height: 220px;
+		overflow-y: auto;
+		padding: 6px;
+		border-radius: 8px;
+		border: 1px solid var(--border);
+		background: var(--surface);
+	}
+	.choice {
+		position: relative;
+		cursor: pointer;
+	}
+	.choice input {
+		position: absolute;
+		opacity: 0;
+		pointer-events: none;
+	}
+	.choice img,
+	.choice span {
+		display: grid;
+		place-items: center;
+		width: 48px;
+		height: 48px;
+		border-radius: 10px;
+		object-fit: cover;
+		border: 2px solid transparent;
+	}
+	.choice.letter span {
+		background: var(--accent-soft);
+		color: var(--accent);
+		font-weight: 700;
+	}
+	.choice input:checked + img,
+	.choice input:checked + span {
+		border-color: var(--accent);
+	}
+	.choice input:focus-visible + img,
+	.choice input:focus-visible + span {
+		outline: 2px solid var(--accent);
+		outline-offset: 1px;
+	}
+	.counter {
+		align-self: center;
+		font-size: 0.78rem;
+		color: var(--faint);
+	}
+	.swatch.site > span:first-of-type {
+		background: conic-gradient(var(--accent) 0 50%, var(--surface-2) 0);
+	}
+	.favs {
+		display: grid;
+		gap: 6px;
+		width: 340px;
+	}
+	.fav {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 4px 6px 4px 4px;
+		border-radius: 8px;
+		border: 1px solid var(--border);
+		background: var(--surface);
+		font-size: 0.86rem;
+	}
+	.fav img {
+		width: 34px;
+		height: 48px;
+		border-radius: 5px;
+		object-fit: cover;
+		background: var(--surface-2);
+	}
+	.fav a,
+	.fav span {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+	}
+	.fav.result {
+		border-style: dashed;
+	}
+	.small {
+		font-size: 0.8rem;
+	}
+	.icon-btn.small {
+		width: 28px;
+		height: 28px;
+	}
+	.btn.small {
+		height: 30px;
+		padding: 0 10px;
+		font-size: 0.8rem;
+	}
+
 	@media (max-width: 860px) {
 		.layout {
 			grid-template-columns: minmax(0, 1fr);
@@ -579,6 +851,11 @@
 		}
 		.swatches {
 			justify-content: flex-start;
+		}
+		.avatar-pick,
+		.favs {
+			width: 100%;
+			justify-items: start;
 		}
 		input:not([type='radio']):not([type='checkbox']):not([type='color']):not([type='search']),
 		select {

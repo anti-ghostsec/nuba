@@ -61,6 +61,19 @@ query Search($search: String, $page: Int, $sort: [MediaSort], $adult: Boolean, $
 ${CARD}`;
 }
 
+/** Characters to pick an avatar from; the media check keeps adult-only characters out. */
+export const CHARACTERS = (search: boolean) => `
+query Characters${search ? '($search: String)' : ''} {
+	Page(perPage: 48) {
+		characters(${search ? 'search: $search, sort: [SEARCH_MATCH, FAVOURITES_DESC]' : 'sort: FAVOURITES_DESC'}) {
+			id
+			name { full }
+			image { large }
+			media(perPage: 1, sort: POPULARITY_DESC) { nodes { isAdult } }
+		}
+	}
+}`;
+
 export const DETAIL = `
 query Detail($id: Int) {
 	Media(id: $id, type: ANIME) {

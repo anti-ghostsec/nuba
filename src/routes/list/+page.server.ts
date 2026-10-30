@@ -1,6 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { CatalogUnavailable, catalog } from '$lib/server/catalog';
 import { removeEntry, saveEntry } from '$lib/server/library';
+import { FAVORITES_MAX, addFavorite, isFavorite, removeFavorite } from '$lib/server/profiles';
 import { safeRedirect } from '$lib/server/redirect';
 import { STATUSES } from '$lib/site';
 import type { ListStatus } from '$lib/types';
@@ -40,6 +41,31 @@ export const actions: Actions = {
 		const capped = item.total ? Math.min(progress, item.total) : progress;
 		const entry = saveEntry(locals.user.id, item, status, capped);
 		return done(request, form, { entry });
+	},
+
+	/** Adds or removes a favorite (form field `on` = "1" or "0"). */
+	favorite: async ({ request, locals }) => {
+		if (!locals.user) return fail(401, { message: 'Sign in to keep favorites.' });
+		const form = await request.formData();
+		const itemId = String(form.get('itemId') ?? '');
+		if (form.get('on') !== '1') {
+			removeFavorite(locals.user.id, itemId);
+			return done(request, form, { favorite: false });
+		}
+		if (isFavorite(locals.user.id, itemId)) return done(request, form, { favorite: true });
+
+		let item;
+		try {
+			item = await catalog.item(itemId);
+		} catch (e) {
+			if (e instanceof CatalogUnavailable) return fail(503, { message: 'Could not reach the catalog. Try again.' });
+			throw e;
+		}
+		if (!item || (item.adult && !locals.user.showAdult)) return fail(404, { message: 'That item no longer exists.' });
+		if (!addFavorite(locals.user.id, item)) {
+			return fail(400, { message: `You can have up to ${FAVORITES_MAX} favorites. Remove one in Settings first.` });
+		}
+		return done(request, form, { favorite: true });
 	},
 
 	remove: async ({ request, locals }) => {

@@ -13,6 +13,12 @@ export interface IndexRecord {
 	names: string[];
 	/** Filterable values, keyed like the catalog's filters (format, genre…). */
 	facets: Record<string, string[]>;
+	/** Facet values only shown to people who have adult titles turned on. */
+	adultFacets?: Record<string, string[]>;
+	/** Descriptors the search box also understands (genres, tags…), so "tenchi isekai" works. */
+	keywords?: string[];
+	/** Keywords only searchable with adult titles turned on. */
+	adultKeywords?: string[];
 	popularity: number;
 }
 
@@ -58,7 +64,8 @@ function distance(a: string, b: string, max: number): number {
 	return rows[a.length][b.length];
 }
 
-const allowedTypos = (len: number) => (len < 4 ? 0 : len < 6 ? 1 : len < 9 ? 2 : 3);
+// One typo up to 7 letters ("narto", "frieran"), two up to 11, then three.
+const allowedTypos = (len: number) => (len < 4 ? 0 : len < 8 ? 1 : len < 12 ? 2 : 3);
 
 /** How well one typed word matches one word of a name, 0–1. */
 function wordScore(typed: string, word: string): number {
@@ -77,12 +84,57 @@ interface Entry {
 	record: IndexRecord;
 	/** Normalized names, for whole-phrase and CJK matching. */
 	flat: string[];
+	keywords: string[];
+	adultKeywords: string[];
 }
+
+type Scores = Map<string, number>;
+
+/** Every distinct word in some phrases → the items that use it. */
+class WordMap {
+	private words = new Map<string, Set<string>>();
+
+	add(id: string, phrases: string[]) {
+		for (const p of phrases) {
+			for (const w of p.split(' ')) {
+				let ids = this.words.get(w);
+				if (!ids) this.words.set(w, (ids = new Set()));
+				ids.add(id);
+			}
+		}
+	}
+
+	remove(id: string, phrases: string[]) {
+		for (const p of phrases) {
+			for (const w of p.split(' ')) {
+				const ids = this.words.get(w);
+				ids?.delete(id);
+				if (ids?.size === 0) this.words.delete(w);
+			}
+		}
+	}
+
+	/** Best score per item for one typed word, scaled by `weight`, into `into`. */
+	best(typed: string, weight: number, into: Scores = new Map()): Scores {
+		for (const [word, ids] of this.words) {
+			const s = wordScore(typed, word) * weight;
+			if (!s) continue;
+			for (const id of ids) if ((into.get(id) ?? 0) < s) into.set(id, s);
+		}
+		return into;
+	}
+}
+
+/** Below this many title matches, the search also looks at genres and tags. */
+const FEW = 30;
+/** A word found in a tag counts for less than one found in the title. */
+const KEYWORD_WEIGHT = 0.7;
 
 export class TitleIndex {
 	private entries = new Map<string, Entry>();
-	/** Every distinct word in any name → the items that use it. */
-	private words = new Map<string, Set<string>>();
+	private names = new WordMap();
+	private keywords = new WordMap();
+	private adultKeywords = new WordMap();
 	private cache = new Map<string, { id: string; score: number }[]>();
 	private facetCache = new Map<string, string[]>();
 	private loaded = false;
@@ -100,27 +152,25 @@ export class TitleIndex {
 
 	private add(record: IndexRecord) {
 		this.remove(record.id);
-		const flat = [...new Set(record.names.map(normalize).filter(Boolean))];
-		this.entries.set(record.id, { record, flat });
-		for (const name of flat) {
-			for (const w of name.split(' ')) {
-				let ids = this.words.get(w);
-				if (!ids) this.words.set(w, (ids = new Set()));
-				ids.add(record.id);
-			}
-		}
+		const clean = (list: string[] = []) => [...new Set(list.map(normalize).filter(Boolean))];
+		const entry = {
+			record,
+			flat: clean(record.names),
+			keywords: clean(record.keywords),
+			adultKeywords: clean(record.adultKeywords)
+		};
+		this.entries.set(record.id, entry);
+		this.names.add(record.id, entry.flat);
+		this.keywords.add(record.id, entry.keywords);
+		this.adultKeywords.add(record.id, entry.adultKeywords);
 	}
 
 	private remove(id: string) {
 		const old = this.entries.get(id);
 		if (!old) return;
-		for (const name of old.flat) {
-			for (const w of name.split(' ')) {
-				const ids = this.words.get(w);
-				ids?.delete(id);
-				if (ids?.size === 0) this.words.delete(w);
-			}
-		}
+		this.names.remove(id, old.flat);
+		this.keywords.remove(id, old.keywords);
+		this.adultKeywords.remove(id, old.adultKeywords);
 		this.entries.delete(id);
 	}
 
@@ -144,17 +194,18 @@ export class TitleIndex {
 
 	/**
 	 * Every value of a facet used by at least `min` titles, A–Z, for filter
-	 * menus. Only non-adult titles count, so adult-only tags stay out.
+	 * menus. Adult titles and adult-only values count only when `adult`.
 	 */
-	facetValues(key: string, min = 1): string[] {
+	facetValues(key: string, min = 1, adult = false): string[] {
 		this.load();
-		const cacheKey = `${key}:${min}`;
+		const cacheKey = `${key}:${min}:${adult}`;
 		const cached = this.facetCache.get(cacheKey);
 		if (cached) return cached;
 		const counts = new Map<string, number>();
 		for (const { record } of this.entries.values()) {
-			if (record.item.adult) continue;
-			for (const v of record.facets[key] ?? []) counts.set(v, (counts.get(v) ?? 0) + 1);
+			if (record.item.adult && !adult) continue;
+			const values = adult ? [...(record.facets[key] ?? []), ...(record.adultFacets?.[key] ?? [])] : (record.facets[key] ?? []);
+			for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1);
 		}
 		const values = [...counts]
 			.filter(([, n]) => n >= min)
@@ -181,12 +232,13 @@ export class TitleIndex {
 	}
 
 	/** Every item matching the text, best first (before filters and sorting). */
-	private match(text: string): { id: string; score: number }[] {
+	private match(text: string, adult: boolean): { id: string; score: number }[] {
 		const phrase = normalize(text);
-		const cached = this.cache.get(phrase);
+		const key = `${adult ? 1 : 0}:${phrase}`;
+		const cached = this.cache.get(key);
 		if (cached) return cached;
 
-		const scores = new Map<string, number>();
+		let scores: Scores = new Map();
 
 		if (hasCJK(phrase)) {
 			// No spaces between words in Japanese, Chinese or Korean: match anywhere.
@@ -199,53 +251,76 @@ export class TitleIndex {
 			if (!typed.length) typed = phrase.split(' ').filter(Boolean);
 			if (!typed.length) return [];
 
-			// Best score per item for each typed word.
-			const perWord = typed.map((t) => {
-				const best = new Map<string, number>();
-				for (const [word, ids] of this.words) {
-					const s = wordScore(t, word);
-					if (!s) continue;
-					for (const id of ids) if ((best.get(id) ?? 0) < s) best.set(id, s);
-				}
-				return best;
-			});
+			const inTitles = typed.map((t) => this.names.best(t, 1));
+			scores = this.combine(typed, inTitles, phrase);
 
-			// Every word has to match, except one when there are three or more.
-			const needed = typed.length >= 3 ? typed.length - 1 : typed.length;
-			const candidates = new Set(perWord.flatMap((m) => [...m.keys()]));
-			for (const id of candidates) {
-				let total = 0;
-				let hits = 0;
-				for (const m of perWord) {
-					const s = m.get(id);
-					if (s) {
-						total += s;
-						hits++;
-					}
+			// Few hits on titles alone: let words match genres and tags too, so
+			// "isekai" finds isekai shows and "tenchi isekai" finds the Tenchi
+			// series' isekai entries. They rank after the title matches.
+			if (scores.size < FEW) {
+				const withTags = typed.map((t, i) => {
+					const m = new Map(inTitles[i]);
+					if (t.length < 3) return m;
+					this.keywords.best(t, KEYWORD_WEIGHT, m);
+					if (adult) this.adultKeywords.best(t, KEYWORD_WEIGHT, m);
+					return m;
+				});
+				// Tags are broad, so here every typed word has to be found.
+				for (const [id, score] of this.combine(typed, withTags, phrase, typed.length)) {
+					if (scores.has(id)) continue;
+					// A whole multi-word tag typed out ("time travel") counts extra.
+					const e = this.entries.get(id)!;
+					const tags = adult ? [...e.keywords, ...e.adultKeywords] : e.keywords;
+					const whole = tags.filter((k) => k.includes(' ') && ` ${phrase} `.includes(` ${k} `)).length;
+					scores.set(id, score + 0.3 * whole);
 				}
-				if (hits < needed) continue;
-				let score = total / typed.length;
-				// The whole phrase as typed, in one name, beats scattered words.
-				if (this.entries.get(id)!.flat.some((n) => ` ${n} `.includes(` ${phrase}`))) score += 0.5;
-				scores.set(id, score);
 			}
 		}
 
 		const ranked = [...scores].map(([id, score]) => ({ id, score }));
-		this.cache.set(phrase, ranked);
+		this.cache.set(key, ranked);
 		if (this.cache.size > 300) this.cache.delete(this.cache.keys().next().value!);
 		return ranked;
 	}
 
+	/** Items where (nearly) every typed word matched, with their average score. */
+	private combine(
+		typed: string[],
+		perWord: Scores[],
+		phrase: string,
+		// Every word has to match, except one when there are three or more.
+		needed = typed.length >= 3 ? typed.length - 1 : typed.length
+	): Scores {
+		const out: Scores = new Map();
+		const candidates = new Set(perWord.flatMap((m) => [...m.keys()]));
+		for (const id of candidates) {
+			let total = 0;
+			let hits = 0;
+			for (const m of perWord) {
+				const s = m.get(id);
+				if (s) {
+					total += s;
+					hits++;
+				}
+			}
+			if (hits < needed) continue;
+			let score = total / typed.length;
+			// The whole phrase as typed, in one name, beats scattered words.
+			if (this.entries.get(id)!.flat.some((n) => ` ${n} `.includes(` ${phrase}`))) score += 0.5;
+			out.set(id, score);
+		}
+		return out;
+	}
+
 	search(q: IndexQuery): Item[] {
 		this.load();
-		const all = q.text.trim() ? this.match(q.text) : [...this.entries.keys()].map((id) => ({ id, score: 0 }));
+		const all = q.text.trim() ? this.match(q.text, q.adult) : [...this.entries.keys()].map((id) => ({ id, score: 0 }));
 		const hits = all.filter(({ id }) => {
 			const r = this.entries.get(id)!.record;
 			if (r.item.adult && !q.adult) return false;
 			for (const [key, values] of Object.entries(q.filters)) {
 				if (!values.length) continue;
-				const have = r.facets[key] ?? [];
+				const have = q.adult ? [...(r.facets[key] ?? []), ...(r.adultFacets?.[key] ?? [])] : (r.facets[key] ?? []);
 				const ok = q.multi.has(key) ? values.every((v) => have.includes(v)) : values.some((v) => have.includes(v));
 				if (!ok) return false;
 			}

@@ -41,7 +41,8 @@ export const GET: RequestHandler = async ({ url }) => {
 		return new Response(cached.subarray(split + 1), { headers: headers(cached.subarray(0, split).toString()) });
 	}
 
-	const upstream = await fetch(target, { signal: AbortSignal.timeout(15_000) }).catch(() => null);
+	// No redirects: a redirect could point the server at a host outside the allow list.
+	const upstream = await fetch(target, { redirect: 'manual', signal: AbortSignal.timeout(15_000) }).catch(() => null);
 	const type = upstream?.headers.get('content-type') ?? '';
 	if (!upstream?.ok || !/^image\/[\w.+-]+$/.test(type)) error(502, 'Image unavailable');
 

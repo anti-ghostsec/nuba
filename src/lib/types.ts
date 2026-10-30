@@ -40,7 +40,7 @@ export interface ItemDetail extends Item {
 	/** Which search filter `tags` belong to, so they can link to it. */
 	tagFilter: string | null;
 	/** Finer-grained descriptors with a 0–100 relevance, some of them spoilers. */
-	keywords: { name: string; weight: number | null; spoiler: boolean }[];
+	keywords: { name: string; weight: number | null; spoiler: boolean; adult?: boolean }[];
 	keywordFilter: string | null;
 	/** Production companies, each linking to a search when `filter` is set. */
 	makers: { label: string; names: string[]; filter: string | null } | null;
@@ -119,6 +119,24 @@ export interface ListEntry {
 export interface ListItem {
 	entry: ListEntry;
 	item: Item;
+}
+
+/** What anyone may see about an account; the rest only if the owner made it public. */
+export interface Profile {
+	username: string;
+	joinedAt: number;
+	bio: string;
+	/** An image from the catalog (character art), or null for the initial. */
+	avatar: string | null;
+	accent: string | null;
+	isPublic: boolean;
+}
+
+/** A picture to use as an avatar. */
+export interface AvatarChoice {
+	id: string;
+	label: string;
+	image: string;
 }
 
 export interface User {

@@ -81,8 +81,8 @@ export const FILTERS: Filter[] = [
  * The fixed filters plus Tags and Studio, whose options come from the local
  * title index (empty until it has been built, which hides them).
  */
-export function allFilters(): Filter[] {
-	const list = (key: string, min: number) => titles.facetValues(key, min).map((v) => ({ value: v, label: v }));
+export function allFilters(adult: boolean): Filter[] {
+	const list = (key: string, min: number) => titles.facetValues(key, min, adult).map((v) => ({ value: v, label: v }));
 	const [format, year, season, status, genre] = FILTERS;
 	return [
 		format,

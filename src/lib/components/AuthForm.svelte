@@ -60,7 +60,12 @@
 				<span>Confirm password</span>
 				<input name="confirm" type="password" autocomplete="new-password" required minlength="8" />
 			</label>
-			<p class="note">There's no email, so a forgotten password can't be reset. Keep it somewhere safe.</p>
+			<p class="note">
+				There's no email, so a forgotten password can't be reset by you. Keep it somewhere safe, or ask the site's
+				admin.
+			</p>
+			<!-- Left empty by people; filled by form-stuffing bots. -->
+			<label class="trap" aria-hidden="true">Website <input name="website" tabindex="-1" autocomplete="off" /></label>
 		{/if}
 
 		{#if form?.message}<p class="error" role="alert">{form.message}</p>{/if}
@@ -144,5 +149,12 @@
 	}
 	.switch a {
 		color: var(--accent);
+	}
+	.trap {
+		position: absolute;
+		left: -9999px;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
 	}
 </style>

@@ -13,6 +13,8 @@ export interface Account {
 	readonly user: User | null;
 	/** The user's entries by item id. */
 	readonly library: Record<string, ListEntry>;
+	/** The user's avatar picture, if they picked one. */
+	readonly avatar: string | null;
 }
 
 export const provideAccount = (account: Account) => setContext(ACCOUNT, account);

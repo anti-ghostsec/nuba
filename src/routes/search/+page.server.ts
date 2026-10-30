@@ -5,8 +5,10 @@ import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ url, locals }) => {
 	const params = url.searchParams;
+	const adult = locals.user?.showAdult ?? false;
+	const available = catalog.filters(adult);
 	const filters: Record<string, string[]> = {};
-	for (const f of catalog.filters) {
+	for (const f of available) {
 		const values = params.getAll(f.key).filter((v) => f.options.some((o) => o.value === v));
 		if (values.length) filters[f.key] = f.multi ? values : values.slice(0, 1);
 	}
@@ -19,7 +21,7 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 		sort: [params.get('sort') ?? (params.get('q') ? '' : locals.prefs.sort)].find((s) =>
 			catalog.sorts.some((o) => o.value === s)
 		) ?? '',
-		adult: locals.user?.showAdult ?? false
+		adult
 	};
 
 	let result: ResultPage;
@@ -31,5 +33,5 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 		error(503, `${catalog.name} is not responding right now. Try again in a moment.`);
 	}
 
-	return { query, result, filters: catalog.filters, sorts: catalog.sorts };
+	return { query, result, filters: available, sorts: catalog.sorts };
 };

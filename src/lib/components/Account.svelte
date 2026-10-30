@@ -3,6 +3,7 @@
 	import { afterNavigate } from '$app/navigation';
 	import { page } from '$app/state';
 	import { useAccount } from '$lib/context';
+	import Avatar from './Avatar.svelte';
 	import { SITE } from '$lib/site';
 
 	const account = useAccount();
@@ -23,10 +24,11 @@
 	<!-- <details> gives a working dropdown even without JavaScript. -->
 	<details class="account" bind:this={menu}>
 		<summary aria-label="Account menu">
-			<span class="avatar" aria-hidden="true">{user.username.charAt(0).toUpperCase()}</span>
+			<Avatar username={user.username} image={account.avatar} size={36} />
 		</summary>
 		<div class="menu panel">
 			<p class="who">{user.username}</p>
+			<a href="/u/{user.username}">Profile</a>
 			<a href="/list">{SITE.listTitle}</a>
 			<a href="/settings">Settings</a>
 			{#if account.user.isAdmin}<a href="/admin">Admin</a>{/if}
@@ -52,15 +54,7 @@
 	summary::-webkit-details-marker {
 		display: none;
 	}
-	.avatar {
-		display: grid;
-		place-items: center;
-		width: 40px;
-		height: 40px;
-		border-radius: 50%;
-		background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 45%, #000));
-		color: var(--accent-ink);
-		font-weight: 700;
+	summary :global(.avatar) {
 		box-shadow:
 			0 0 0 2px var(--bg),
 			0 0 0 3px color-mix(in srgb, var(--accent) 60%, transparent);

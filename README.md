@@ -40,8 +40,9 @@ npm run dev        # http://localhost:5173
 Production:
 
 ```bash
+cp .env.example .env   # then edit it: at least ORIGIN
 npm run build
-PORT=3000 HOST=127.0.0.1 npm start
+npm start              # reads .env
 ```
 
 ### Admins
@@ -77,16 +78,51 @@ AniList (or another service) can be added later as a separate, optional feature.
 
 ## Hosting as a Tor onion service
 
-Bind Nuba to localhost only, then point a hidden service at it in `/etc/tor/torrc`:
+1. Point a hidden service at Nuba in `/etc/tor/torrc`, then restart Tor:
 
-```
-HiddenServiceDir /var/lib/tor/nuba/
-HiddenServicePort 80 127.0.0.1:3000
-```
+   ```
+   HiddenServiceDir /var/lib/tor/nuba/
+   HiddenServicePort 80 127.0.0.1:3000
+   ```
 
-Restart Tor; your `.onion` address is in `/var/lib/tor/nuba/hostname`.
-Keep `NUBA_IMAGE_PROXY=true` so images are served from your own server. Images are kept in
-`data/images/` after the first view, so each is downloaded from the catalog once.
+2. Your address is in `/var/lib/tor/nuba/hostname`. Put it in `.env`, with plain
+   `http` (Tor already encrypts and authenticates the connection):
+
+   ```
+   ORIGIN=http://youraddress.onion
+   HOST=127.0.0.1
+   PORT=3000
+   ```
+
+   **ORIGIN is required.** Without it the server assumes `https://`, and every form
+   (sign-in, lists, settings) is rejected as cross-site on a plain-http onion.
+
+3. `npm run build && npm start`. Keep `HOST=127.0.0.1` so the server is only
+   reachable through Tor.
+
+Everything works in Tor Browser's "Safest" mode (JavaScript off): pages are
+rendered on the server, menus and tabs are CSS-only, and all actions are plain
+forms. Keep `NUBA_IMAGE_PROXY=true` so images come from your own server. Images
+are kept in `data/images/` after the first view.
+
+While the site is private, set `NUBA_REGISTRATION=closed` once your own account
+exists. To mirror on clearnet too, set `NUBA_ONION_URL` there so Tor Browser offers
+the onion.
+
+## Privacy and security
+
+- Visitors' browsers only ever talk to your server: no third-party scripts, fonts,
+  images or analytics, enforced by a Content Security Policy.
+- No email, no IP addresses stored or logged by Nuba, no tracking cookies. Two
+  cookies: the session (random token, only its hash stored) and display preferences.
+- Passwords are hashed with scrypt. Sign-in attempts are throttled per username and
+  sign-ups site-wide (over Tor everyone shares one IP), with a bot trap on sign-up.
+- Profiles are private unless their owner makes them public. Avatars are picked from
+  catalog art: there are no uploads to moderate.
+- Headers: no-referrer, no framing, nosniff, a strict permissions policy, and
+  `no-store` caching for signed-in pages.
+- The image proxy only fetches https images from the catalog's own hosts and never
+  follows redirects.
 
 ## Notes
 

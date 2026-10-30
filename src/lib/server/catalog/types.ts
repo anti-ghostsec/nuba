@@ -1,4 +1,4 @@
-import type { Filter, HomeFeed, ItemDetail, Option, ResultPage, SearchQuery } from '$lib/types';
+import type { AvatarChoice, Filter, HomeFeed, ItemDetail, Option, ResultPage, SearchQuery } from '$lib/types';
 
 /**
  * A data source for Nuba. Implement this to point Nuba at something else:
@@ -10,8 +10,9 @@ export interface Catalog {
 	url: string;
 	/** Hosts the image proxy may fetch from. */
 	imageHosts: string[];
-	/** Filters and sort orders offered on the search page. */
-	filters: Filter[];
+	/** Filters offered on the search page; adult-only options only when `adult`. */
+	filters(adult: boolean): Filter[];
+	/** Sort orders offered on the search page. */
 	sorts: Option[];
 
 	/** Optional background work (e.g. keeping a local search index), started once with the server. */
@@ -24,6 +25,8 @@ export interface Catalog {
 	home(): Promise<HomeFeed>;
 	/** Search, or browse when the text is empty. Excludes adult items unless query.adult. */
 	search(query: SearchQuery): Promise<ResultPage>;
+	/** Pictures people can pick as their avatar: popular ones, or matching `search`. Optional. */
+	avatars?(search: string): Promise<AvatarChoice[]>;
 	/** Returns null when the item does not exist. Adult items are returned with adult: true. */
 	item(id: string): Promise<ItemDetail | null>;
 }

@@ -3,6 +3,17 @@ import { PREFS_COOKIE, sanitizePrefs } from '$lib/prefs';
 import { catalog } from '$lib/server/catalog';
 import { clearList } from '$lib/server/library';
 import {
+	BIO_MAX,
+	FAVORITES_MAX,
+	favoritesFor,
+	profileById,
+	setAvatar,
+	setBio,
+	setProfileAccent,
+	setPublic
+} from '$lib/server/profiles';
+import type { AvatarChoice, Item } from '$lib/types';
+import {
 	SESSION_COOKIE,
 	checkPassword,
 	deleteUser,
@@ -16,7 +27,52 @@ import {
 } from '$lib/server/users';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = () => ({ sorts: catalog.sorts });
+export const load: PageServerLoad = async ({ locals, url }) => {
+	if (!locals.user) return { sorts: catalog.sorts, profile: null };
+
+	// Avatar and favorite pickers search through plain GET parameters, so
+	// they work without JavaScript too.
+	const avatarSearch = (url.searchParams.get('avatars') ?? '').trim().slice(0, 60);
+	const favSearch = (url.searchParams.get('fav') ?? '').trim().slice(0, 100);
+	const safely = <T>(p: Promise<T> | undefined, fallback: T) =>
+		(p ?? Promise.resolve(fallback)).catch((e) => {
+			console.error('Settings picker failed:', e instanceof Error ? e.message : e);
+			return fallback;
+		});
+
+	const [avatars, favResults] = await Promise.all([
+		safely<AvatarChoice[]>(catalog.avatars?.(avatarSearch), []),
+		favSearch
+			? safely(
+					catalog.search({ text: favSearch, page: 1, filters: {}, sort: '', adult: locals.user.showAdult }).then((r) => r.items.slice(0, 8)),
+					[] as Item[]
+				)
+			: Promise.resolve([] as Item[])
+	]);
+
+	return {
+		sorts: catalog.sorts,
+		profile: profileById(locals.user.id),
+		favorites: favoritesFor(locals.user.id),
+		favoritesMax: FAVORITES_MAX,
+		bioMax: BIO_MAX,
+		avatars,
+		avatarSearch,
+		favSearch,
+		favResults,
+		hasAvatars: !!catalog.avatars
+	};
+};
+
+/** An avatar must be an https image on one of the catalog's own image hosts. */
+function validAvatar(value: string): boolean {
+	try {
+		const u = new URL(value);
+		return u.protocol === 'https:' && catalog.imageHosts.includes(u.hostname);
+	} catch {
+		return false;
+	}
+}
 
 /** A message shown next to the setting it belongs to. */
 const say = (section: string, message: string, ok = false) => ({ section, message, ok });
@@ -65,6 +121,34 @@ export const actions: Actions = {
 		const form = await request.formData();
 		setShowAdult(locals.user.id, form.get('showAdult') === '1');
 		redirect(303, '/settings#content');
+	},
+
+	avatar: async ({ request, locals }) => {
+		if (!locals.user) return fail(401, say('avatar', 'Sign in first.'));
+		const value = String((await request.formData()).get('avatar') ?? '');
+		if (value && !validAvatar(value)) return fail(400, say('avatar', 'Pick one of the pictures shown.'));
+		setAvatar(locals.user.id, value || null);
+		return say('avatar', 'Avatar saved.', true);
+	},
+
+	bio: async ({ request, locals }) => {
+		if (!locals.user) return fail(401, say('bio', 'Sign in first.'));
+		setBio(locals.user.id, String((await request.formData()).get('bio') ?? ''));
+		return say('bio', 'Status saved.', true);
+	},
+
+	profileAccent: async ({ request, locals }) => {
+		if (!locals.user) return fail(401, say('profileAccent', 'Sign in first.'));
+		const form = await request.formData();
+		const value = form.get('profileAccent') === 'custom' ? form.get('profileAccentCustom') : form.get('profileAccent');
+		setProfileAccent(locals.user.id, typeof value === 'string' && value ? value : null);
+		return say('profileAccent', 'Profile accent saved.', true);
+	},
+
+	public: async ({ request, locals }) => {
+		if (!locals.user) return fail(401, say('public', 'Sign in first.'));
+		setPublic(locals.user.id, (await request.formData()).get('public') === '1');
+		return say('public', 'Saved.', true);
 	},
 
 	username: async ({ request, locals }) => {

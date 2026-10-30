@@ -1,5 +1,8 @@
 <script lang="ts">
 	import ExternalLink from '@lucide/svelte/icons/external-link';
+	import Heart from '@lucide/svelte/icons/heart';
+	import { enhance } from '$app/forms';
+	import { useAccount } from '$lib/context';
 	import Star from '@lucide/svelte/icons/star';
 	import ListEditor from '$lib/components/ListEditor.svelte';
 	import { fadeIn } from '$lib/actions';
@@ -11,6 +14,8 @@
 	let { data } = $props();
 
 	const prefs = usePrefs();
+	const account = useAccount();
+	let favError = $state<string | null>(null);
 	const m = $derived(data.item);
 	const title = $derived(titleOf(m, prefs.titleLang));
 	// A second name above the title, as on most anime sites: romaji under an
@@ -131,6 +136,27 @@
 
 	<aside class="side">
 		<ListEditor itemId={m.id} total={m.total} />
+		{#if account.user}
+			<form
+				method="POST"
+				action="/list?/favorite"
+				class="fav"
+				use:enhance={() =>
+					async ({ result, update }) => {
+						favError = result.type === 'failure' ? String(result.data?.message ?? 'Could not save.') : null;
+						await update({ reset: false, invalidateAll: true });
+					}}
+			>
+				<input type="hidden" name="itemId" value={m.id} />
+				<input type="hidden" name="on" value={data.favorite ? '0' : '1'} />
+				<input type="hidden" name="redirectTo" value={data.path} />
+				<button class="btn ghost" class:on={data.favorite} aria-pressed={data.favorite}>
+					<Heart size={16} fill={data.favorite ? 'currentColor' : 'none'} />
+					{data.favorite ? 'Favorite' : 'Add to favorites'}
+				</button>
+				{#if favError}<p class="fav-error" role="alert">{favError}</p>{/if}
+			</form>
+		{/if}
 		<div class="facts panel">
 			<dl>
 				{#each m.facts as fact (fact.label)}
@@ -312,6 +338,22 @@
 		align-self: start;
 		display: grid;
 		gap: 16px;
+	}
+	.fav {
+		display: grid;
+		gap: 6px;
+	}
+	.fav .btn {
+		justify-content: center;
+		width: 100%;
+	}
+	.fav .btn.on {
+		color: var(--accent);
+		border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+	}
+	.fav-error {
+		font-size: 0.82rem;
+		color: #fb7185;
 	}
 	.facts {
 		padding: 18px;

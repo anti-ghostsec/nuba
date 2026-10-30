@@ -1,5 +1,6 @@
 import { catalog } from '$lib/server/catalog';
 import { listFor } from '$lib/server/library';
+import { profileById } from '$lib/server/profiles';
 import type { ListEntry } from '$lib/types';
 import type { LayoutServerLoad } from './$types';
 
@@ -15,6 +16,7 @@ export const load: LayoutServerLoad = ({ locals, depends }) => {
 		user: locals.user,
 		source: { name: catalog.name, url: catalog.url },
 		library,
-		list
+		list,
+		avatar: locals.user ? (profileById(locals.user.id)?.avatar ?? null) : null
 	};
 };

@@ -43,7 +43,20 @@ const MIGRATIONS = [
 		state TEXT NOT NULL
 	);
 	`,
-	`ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0;`
+	`ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0;`,
+	`
+	ALTER TABLE users ADD COLUMN bio TEXT NOT NULL DEFAULT '';
+	ALTER TABLE users ADD COLUMN avatar TEXT;
+	ALTER TABLE users ADD COLUMN profile_accent TEXT;
+	ALTER TABLE users ADD COLUMN public_profile INTEGER NOT NULL DEFAULT 0;
+	CREATE TABLE favorites (
+		user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		item_id TEXT NOT NULL,
+		added_at INTEGER NOT NULL,
+		snapshot TEXT NOT NULL,
+		PRIMARY KEY (user_id, item_id)
+	);
+	`
 ];
 
 let db: Database.Database | undefined;

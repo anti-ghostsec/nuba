@@ -2,7 +2,7 @@ import { stripHtml } from '$lib/format';
 import type { Item, ItemDetail, Release, ResultPage } from '$lib/types';
 import type { Catalog } from '../types';
 import { NotFound, query } from './client';
-import { DETAIL, HOME, searchQuery } from './queries';
+import { CHARACTERS, DETAIL, HOME, searchQuery } from './queries';
 import { crawlerStatus, resyncTitles, startCrawler, titles } from './crawl';
 import { FORMATS } from './format';
 import { SORTS, allFilters, filterVariables, sortVariable, variants } from './search';
@@ -103,9 +103,7 @@ export const anilist: Catalog = {
 	name: 'AniList',
 	url: 'https://anilist.co',
 	imageHosts: ['s4.anilist.co', 'img.anili.st'],
-	get filters() {
-		return allFilters();
-	},
+	filters: allFilters,
 	sorts: SORTS,
 	start: startCrawler,
 	status: crawlerStatus,
@@ -153,7 +151,7 @@ export const anilist: Catalog = {
 			const all = titles.search({
 				text: q.text,
 				filters: q.filters,
-				multi: new Set(allFilters().filter((f) => f.multi).map((f) => f.key)),
+				multi: new Set(allFilters(q.adult).filter((f) => f.multi).map((f) => f.key)),
 				adult: q.adult,
 				sort: LOCAL_SORTS[q.sort] ?? 'relevance'
 			});
@@ -199,6 +197,19 @@ export const anilist: Catalog = {
 		};
 	},
 
+	async avatars(search) {
+		type Character = { id: number; name: { full: string }; image: { large: string | null }; media: { nodes: { isAdult: boolean }[] } };
+		const text = search.trim().slice(0, 60);
+		const data = await query<{ Page: { characters: Character[] } }>(
+			CHARACTERS(!!text),
+			text ? { search: text } : {},
+			text ? 60 * 60_000 : 24 * 3600_000
+		);
+		return data.Page.characters
+			.filter((c) => c.image.large && !c.image.large.includes('/default.') && !c.media.nodes[0]?.isAdult)
+			.map((c) => ({ id: String(c.id), label: c.name.full, image: c.image.large! }));
+	},
+
 	async item(id) {
 		if (!/^\d{1,9}$/.test(id)) return null;
 
@@ -235,10 +246,12 @@ export const anilist: Catalog = {
 			summary: stripHtml(m.description ?? null),
 			facts,
 			tagFilter: 'genre',
-			// Adult descriptors only make sense on adult titles.
-			keywords: m.tags
-				.filter((t) => m.isAdult || !t.isAdult)
-				.map((t) => ({ name: t.name, weight: t.rank, spoiler: t.isMediaSpoiler })),
+			keywords: m.tags.map((t) => ({
+				name: t.name,
+				weight: t.rank,
+				spoiler: t.isMediaSpoiler,
+				...(t.isAdult && { adult: true })
+			})),
 			keywordFilter: 'tag',
 			makers: m.studios.nodes.length
 				? { label: m.studios.nodes.length > 1 ? 'Studios' : 'Studio', names: m.studios.nodes.map((s) => s.name), filter: 'studio' }

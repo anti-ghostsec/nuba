@@ -15,7 +15,7 @@ const FIELDS = `id updatedAt isAdult popularity format status season seasonYear 
 	studios(isMain: true) { nodes { name } } tags { name isAdult }`;
 
 /** Bump when FIELDS or toRecord change, to refetch everything in the background. */
-const VERSION = 3;
+const VERSION = 4;
 
 /** Ten pages of 50 per request: AniList counts requests, not titles. */
 const PAGES = 10;
@@ -108,10 +108,13 @@ function toRecord(m: Raw): IndexRecord {
 			status: m.status ? [m.status] : [],
 			genre: m.genres,
 			studio: m.studios.nodes.map((s) => s.name),
-			// Every tag AniList lists, as AniList's own tag filter does. Adult
-			// descriptors only on adult titles, which keeps them out of the menu.
-			tag: m.tags.filter((t) => m.isAdult || !t.isAdult).map((t) => t.name)
+			// Every tag AniList lists. Its adult descriptors go in adultFacets,
+			// for people who have adult titles turned on.
+			tag: m.tags.filter((t) => !t.isAdult).map((t) => t.name)
 		},
+		adultFacets: { tag: m.tags.filter((t) => t.isAdult).map((t) => t.name) },
+		keywords: [...m.genres, ...m.tags.filter((t) => !t.isAdult).map((t) => t.name)],
+		adultKeywords: m.tags.filter((t) => t.isAdult).map((t) => t.name),
 		popularity: m.popularity ?? 0
 	};
 }

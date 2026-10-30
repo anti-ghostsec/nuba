@@ -22,6 +22,9 @@
 		},
 		get library() {
 			return data.library;
+		},
+		get avatar() {
+			return data.avatar;
 		}
 	});
 

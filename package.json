@@ -9,7 +9,7 @@
 		"dev": "vite dev",
 		"build": "vite build",
 		"preview": "vite preview",
-		"start": "node build",
+		"start": "node start.js",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"admin": "node scripts/admin.mjs"
 	},
