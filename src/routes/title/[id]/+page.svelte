@@ -2,6 +2,7 @@
 	import ExternalLink from '@lucide/svelte/icons/external-link';
 	import Star from '@lucide/svelte/icons/star';
 	import ListEditor from '$lib/components/ListEditor.svelte';
+	import { fadeIn } from '$lib/actions';
 	import Row from '$lib/components/Row.svelte';
 	import { usePrefs } from '$lib/context';
 	import { img, score, titleOf } from '$lib/format';
@@ -12,7 +13,16 @@
 	const prefs = usePrefs();
 	const m = $derived(data.item);
 	const title = $derived(titleOf(m, prefs.titleLang));
-	const original = $derived(m.altTitles.native ?? null);
+	// A second name above the title, as on most anime sites: romaji under an
+	// English title, English under the others.
+	const subtitle = $derived.by(() => {
+		const { english, romaji } = m.altTitles;
+		const other = prefs.titleLang === 'english' ? romaji : english;
+		return other && other !== title ? other : null;
+	});
+	const search = (key: string | null, value: string) => (key ? `/search?${new URLSearchParams({ [key]: value })}` : null);
+	const visibleKeywords = $derived(m.keywords.filter((k) => !k.spoiler));
+	const spoilers = $derived(m.keywords.filter((k) => k.spoiler));
 
 	const nextAt = $derived(
 		m.next &&
@@ -32,22 +42,37 @@
 	<meta name="description" content={(m.summary ?? '').slice(0, 160)} />
 </svelte:head>
 
-<div class="banner" style:--ph={m.color ?? '#111'}>
-	{#if m.banner}<img src={img(m.banner)} alt="" fetchpriority="high" />{/if}
+{#snippet chip(label: string, href: string | null, extra?: string)}
+	{#if href}
+		<a class="chip link" {href}>{label}{#if extra}<span class="weight">{extra}</span>{/if}</a>
+	{:else}
+		<span class="chip">{label}{#if extra}<span class="weight">{extra}</span>{/if}</span>
+	{/if}
+{/snippet}
+
+<!-- The cover's color, faintly, until the art arrives; a blurred cover when there's no banner. -->
+<div class="banner" style:--ph={m.color ?? 'transparent'}>
+	{#if m.banner}
+		<img src={img(m.banner)} alt="" fetchpriority="high" use:fadeIn />
+	{:else if m.cover}
+		<img class="blur" src={img(m.cover)} alt="" use:fadeIn />
+	{/if}
 </div>
 
 <div class="container detail">
-	<div class="cover" style:background={m.color ?? 'var(--surface-2)'}>
-		<img src={img(m.coverLarge)} alt="" width="230" height="345" />
+	<div class="cover" style:--ph={m.color ?? 'transparent'}>
+		<img src={img(m.coverLarge)} alt="" width="230" height="345" fetchpriority="high" use:fadeIn />
 	</div>
 
 	<div class="main">
-		<h1>{title}</h1>
-		{#if original && title !== original}<p class="alt">{original}</p>{/if}
+		<div class="heading">
+			{#if subtitle}<p class="alt">{subtitle}</p>{/if}
+			<h1>{title}</h1>
+		</div>
 
 		<div class="chips">
 			{#if m.score}<span class="chip score"><Star size={14} fill="currentColor" />{score(m.score)}</span>{/if}
-			{#each m.tags as tag (tag)}<span class="chip">{tag}</span>{/each}
+			{#each m.tags as tag (tag)}{@render chip(tag, search(m.tagFilter, tag))}{/each}
 		</div>
 
 		{#if m.next && nextAt}
@@ -55,6 +80,36 @@
 		{/if}
 
 		<p class="desc">{m.summary}</p>
+
+		{#if m.makers}
+			<section class="group">
+				<h2>{m.makers.label}</h2>
+				<div class="chips">
+					{#each m.makers.names as name (name)}{@render chip(name, search(m.makers.filter, name))}{/each}
+				</div>
+			</section>
+		{/if}
+
+		{#if m.keywords.length}
+			<section class="group">
+				<h2>Tags</h2>
+				<div class="chips">
+					{#each visibleKeywords as k (k.name)}
+						{@render chip(k.name, search(m.keywordFilter, k.name), k.weight != null ? `${k.weight}%` : undefined)}
+					{/each}
+				</div>
+				{#if spoilers.length}
+					<details class="spoilers">
+						<summary>Show {spoilers.length} spoiler {spoilers.length === 1 ? 'tag' : 'tags'}</summary>
+						<div class="chips">
+							{#each spoilers as k (k.name)}
+								{@render chip(k.name, search(m.keywordFilter, k.name), k.weight != null ? `${k.weight}%` : undefined)}
+							{/each}
+						</div>
+					</details>
+				{/if}
+			</section>
+		{/if}
 
 		<section class="watch">
 			<h2>{SITE.linksTitle}</h2>
@@ -79,7 +134,12 @@
 		<div class="facts panel">
 			<dl>
 				{#each m.facts as fact (fact.label)}
-					<div><dt>{fact.label}</dt><dd>{fact.value}</dd></div>
+					<div>
+						<dt>{fact.label}</dt>
+						<dd>
+							{#if fact.filter}<a href={search(fact.filter.key, fact.filter.value)}>{fact.value}</a>{:else}{fact.value}{/if}
+						</dd>
+					</div>
 				{/each}
 			</dl>
 			{#if m.sourceUrl}
@@ -99,13 +159,17 @@
 	.banner {
 		position: relative;
 		height: clamp(220px, 38vh, 360px);
-		background: var(--ph);
+		background: color-mix(in srgb, var(--ph) 18%, var(--bg));
 		overflow: hidden;
 	}
 	.banner img {
 		width: 100%;
 		height: 100%;
 		object-fit: cover;
+	}
+	.banner img.blur {
+		filter: blur(28px) brightness(0.6);
+		transform: scale(1.2);
 	}
 	.banner::after {
 		content: '';
@@ -121,6 +185,7 @@
 		margin-top: -110px;
 	}
 	.cover {
+		background: color-mix(in srgb, var(--ph) 22%, var(--surface));
 		align-self: start;
 		aspect-ratio: 2 / 3;
 		border-radius: var(--radius-lg);
@@ -144,9 +209,31 @@
 		line-height: 1.1;
 		letter-spacing: -0.02em;
 	}
+	.heading {
+		display: grid;
+		gap: 4px;
+	}
 	.alt {
-		margin-top: -6px;
 		color: var(--muted);
+		font-size: 0.95rem;
+	}
+	.group {
+		display: grid;
+		gap: 10px;
+	}
+	.group h2 {
+		font-size: 1rem;
+		font-weight: 600;
+	}
+	.spoilers summary {
+		width: fit-content;
+		margin-bottom: 10px;
+		font-size: 0.85rem;
+		color: var(--muted);
+		cursor: pointer;
+	}
+	.spoilers summary:hover {
+		color: var(--text);
 	}
 	.chips {
 		display: flex;
@@ -163,6 +250,20 @@
 		background: var(--surface);
 		border: 1px solid var(--border);
 		color: var(--muted);
+	}
+	.chip.link {
+		transition:
+			color 0.15s,
+			border-color 0.15s;
+	}
+	.chip.link:hover {
+		color: var(--text);
+		border-color: var(--accent);
+	}
+	.weight {
+		margin-left: 2px;
+		font-size: 0.72rem;
+		color: var(--faint);
 	}
 	.chip.score {
 		color: var(--gold);
@@ -227,6 +328,9 @@
 	dd {
 		margin: 0;
 		font-size: 0.92rem;
+	}
+	dd a:hover {
+		color: var(--accent);
 	}
 	.source {
 		display: inline-flex;

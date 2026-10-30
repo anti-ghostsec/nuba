@@ -15,7 +15,10 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 		text: (params.get('q') ?? '').trim().slice(0, 100),
 		page: Math.min(Math.max(Number(params.get('page')) || 1, 1), 50),
 		filters,
-		sort: catalog.sorts.some((s) => s.value === params.get('sort')) ? params.get('sort')! : '',
+		// The visitor's default sort applies to plain browsing, not to text searches.
+		sort: [params.get('sort') ?? (params.get('q') ? '' : locals.prefs.sort)].find((s) =>
+			catalog.sorts.some((o) => o.value === s)
+		) ?? '',
 		adult: locals.user?.showAdult ?? false
 	};
 

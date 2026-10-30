@@ -52,3 +52,7 @@ export function saveEntry(userId: number, item: Item, status: ListStatus, progre
 export function removeEntry(userId: number, itemId: string) {
 	getDb().prepare('DELETE FROM list_entries WHERE user_id = ? AND item_id = ?').run(userId, itemId);
 }
+
+export function clearList(userId: number) {
+	getDb().prepare('DELETE FROM list_entries WHERE user_id = ?').run(userId);
+}

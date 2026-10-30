@@ -89,7 +89,7 @@ export function allFilters(): Filter[] {
 		year,
 		season,
 		status,
-		{ key: 'tag', label: 'Tags', multi: true, picker: true, options: list('tag', 5) },
+		{ key: 'tag', label: 'Tags', multi: true, picker: true, options: list('tag', 1) },
 		{ key: 'studio', label: 'Studio', picker: true, options: list('studio', 3) },
 		genre
 	].filter((f) => f.options.length);

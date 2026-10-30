@@ -30,6 +30,7 @@
 	$effect(() => {
 		const root = document.documentElement;
 		root.dataset.mode = prefs.mode;
+		root.dataset.text = prefs.textSize;
 		root.style.setProperty('--accent', prefs.accent);
 		root.style.setProperty('--accent-ink', accentInk(prefs.accent));
 		root.toggleAttribute('data-reduce-motion', prefs.reduceMotion);

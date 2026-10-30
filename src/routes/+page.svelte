@@ -4,9 +4,11 @@
 	import Row from '$lib/components/Row.svelte';
 	import Schedule from '$lib/components/Schedule.svelte';
 	import TopList from '$lib/components/TopList.svelte';
+	import { usePrefs } from '$lib/context';
 	import { SITE } from '$lib/site';
 
 	let { data } = $props();
+	const prefs = usePrefs();
 
 	// Row keys its items by id, so hand it the list items under their item's id.
 	const watching = $derived(
@@ -22,7 +24,7 @@
 {#if data.feed.hero.length}<Hero items={data.feed.hero} />{:else}<div class="spacer"></div>{/if}
 
 <div class="container sections">
-	{#if watching.length}
+	{#if prefs.showContinue && watching.length}
 		<Row title={SITE.continueTitle} items={watching}>
 			{#snippet card(l)}<ProgressCard entry={l.entry} item={l.item} />{/snippet}
 		</Row>

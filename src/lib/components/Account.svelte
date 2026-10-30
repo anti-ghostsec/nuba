@@ -29,6 +29,7 @@
 			<p class="who">{user.username}</p>
 			<a href="/list">{SITE.listTitle}</a>
 			<a href="/settings">Settings</a>
+			{#if account.user.isAdmin}<a href="/admin">Admin</a>{/if}
 			<form method="POST" action="/logout">
 				<button>Sign out</button>
 			</form>

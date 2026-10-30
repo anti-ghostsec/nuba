@@ -17,6 +17,8 @@ section only shows official services listed by the catalog.
   use the catalog's rate limit
 - Browsing and detail pages with outbound links and recommendations
 - Optional adult titles: a signed-in, self-declared 18+ setting, off by default
+- Settings with account tools (rename, change password, sign out other devices,
+  export or clear your list, delete your account) and per-device display options
 - **Nuba's own accounts and lists**: username and password only, no email, nothing
   linked to a third-party account. Continue Watching row, status badges on cards,
   one-click progress, and a list editor on every title
@@ -41,6 +43,21 @@ Production:
 npm run build
 PORT=3000 HOST=127.0.0.1 npm start
 ```
+
+### Admins
+
+Register an account on the site, then make it an admin on the server:
+
+```bash
+npm run admin -- <username>            # grant
+npm run admin -- <username> --remove   # revoke
+npm run admin -- --list                # show admins
+```
+
+Admins get an Admin page (account menu → Admin) with site stats, the catalog's
+sync status, and account tools: reset a forgotten password (there is no email, so
+the admin passes the new one on), grant or remove admin, delete an account. Admin
+rights can only be granted from the server, never through the website.
 
 See `.env.example` for configuration. Accounts and lists are stored in
 `data/nuba.db` (SQLite); back up that file to back up your users.
@@ -68,7 +85,8 @@ HiddenServicePort 80 127.0.0.1:3000
 ```
 
 Restart Tor; your `.onion` address is in `/var/lib/tor/nuba/hostname`.
-Keep `NUBA_IMAGE_PROXY=true` so images are served from your own server.
+Keep `NUBA_IMAGE_PROXY=true` so images are served from your own server. Images are kept in
+`data/images/` after the first view, so each is downloaded from the catalog once.
 
 ## Notes
 

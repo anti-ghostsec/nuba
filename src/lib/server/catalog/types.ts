@@ -16,6 +16,10 @@ export interface Catalog {
 
 	/** Optional background work (e.g. keeping a local search index), started once with the server. */
 	start?(): void;
+	/** Health details for the admin page. */
+	status?(): { label: string; value: string }[];
+	/** Refetch whatever the catalog keeps locally. */
+	resync?(): void;
 
 	home(): Promise<HomeFeed>;
 	/** Search, or browse when the text is empty. Excludes adult items unless query.adult. */

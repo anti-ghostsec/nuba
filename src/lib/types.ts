@@ -28,8 +28,22 @@ export interface Item {
 	adult?: boolean;
 }
 
+/** Points at a search filter, e.g. { key: 'studio', value: 'MAPPA' }. */
+export interface FilterLink {
+	key: string;
+	value: string;
+}
+
 export interface ItemDetail extends Item {
-	facts: { label: string; value: string }[];
+	/** Facts in the sidebar; one with a filter links to a search for it. */
+	facts: { label: string; value: string; filter?: FilterLink }[];
+	/** Which search filter `tags` belong to, so they can link to it. */
+	tagFilter: string | null;
+	/** Finer-grained descriptors with a 0–100 relevance, some of them spoilers. */
+	keywords: { name: string; weight: number | null; spoiler: boolean }[];
+	keywordFilter: string | null;
+	/** Production companies, each linking to a search when `filter` is set. */
+	makers: { label: string; names: string[]; filter: string | null } | null;
 	/** Outbound links, e.g. official places to watch or buy. */
 	links: { label: string; url: string; color: string | null }[];
 	/** The next unit to be released, if the catalog knows. */
@@ -111,4 +125,5 @@ export interface User {
 	id: number;
 	username: string;
 	showAdult: boolean;
+	isAdmin: boolean;
 }

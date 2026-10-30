@@ -73,7 +73,8 @@
 
 	<label class="toggle">
 		<span>Reduce motion</span>
-		<input type="checkbox" name="reduceMotion" role="switch" bind:checked={prefs.reduceMotion} />
+		<input type="hidden" name="reduceMotion" value="false" />
+		<input type="checkbox" name="reduceMotion" value="true" role="switch" bind:checked={prefs.reduceMotion} />
 		<span class="track" aria-hidden="true"></span>
 	</label>
 

@@ -12,10 +12,10 @@ export const titles = new TitleIndex('anilist');
 
 const FIELDS = `id updatedAt isAdult popularity format status season seasonYear startDate { year } episodes
 	averageScore genres synonyms title { romaji english native } coverImage { large extraLarge color }
-	studios(isMain: true) { nodes { name } } tags { name rank isMediaSpoiler }`;
+	studios(isMain: true) { nodes { name } } tags { name isAdult }`;
 
 /** Bump when FIELDS or toRecord change, to refetch everything in the background. */
-const VERSION = 2;
+const VERSION = 3;
 
 /** Ten pages of 50 per request: AniList counts requests, not titles. */
 const PAGES = 10;
@@ -64,7 +64,7 @@ interface Raw {
 	title: { romaji: string | null; english: string | null; native: string | null };
 	coverImage: { large: string | null; extraLarge: string | null; color: string | null };
 	studios: { nodes: { name: string }[] };
-	tags: { name: string; rank: number; isMediaSpoiler: boolean }[];
+	tags: { name: string; isAdult: boolean }[];
 }
 
 interface State {
@@ -108,8 +108,9 @@ function toRecord(m: Raw): IndexRecord {
 			status: m.status ? [m.status] : [],
 			genre: m.genres,
 			studio: m.studios.nodes.map((s) => s.name),
-			// Spoiler tags would give away the plot in the filter list.
-			tag: m.tags.filter((t) => !t.isMediaSpoiler && t.rank >= 40).map((t) => t.name)
+			// Every tag AniList lists, as AniList's own tag filter does. Adult
+			// descriptors only on adult titles, which keeps them out of the menu.
+			tag: m.tags.filter((t) => m.isAdult || !t.isAdult).map((t) => t.name)
 		},
 		popularity: m.popularity ?? 0
 	};
@@ -169,11 +170,24 @@ async function step(state: State): Promise<'more' | 'idle'> {
 	return 'idle';
 }
 
+// Shared through globalThis so the dev server's hot reloads keep talking to
+// the one running loop.
+interface Crawler {
+	state: State | null;
+	error: string | null;
+	wake: () => void;
+}
+const crawler = ((globalThis as { __nubaCrawler?: Crawler }).__nubaCrawler ??= {
+	state: null,
+	error: null,
+	wake: () => {}
+});
+let started = !!crawler.state;
+
 /** Starts the background sync once per server process. */
 export function startCrawler() {
-	const g = globalThis as { __nubaCrawler?: boolean };
-	if (g.__nubaCrawler) return;
-	g.__nubaCrawler = true;
+	if (started) return;
+	started = true;
 
 	(async () => {
 		const saved = titles.getState<Partial<State>>();
@@ -183,15 +197,45 @@ export function startCrawler() {
 			state = { ...state, version: VERSION, ready: !!saved?.complete || !!saved?.ready, slice: 0, page: 1, complete: false };
 			titles.setState(state);
 		}
+		crawler.state = state;
 		if (!state.complete) console.log(`Building title index from AniList (${titles.size} so far)…`);
 		for (;;) {
 			try {
 				await politely();
-				if ((await step(state)) === 'idle') await sleep(30 * 60_000);
+				const result = await step(state);
+				crawler.error = null;
+				if (result === 'idle') await new Promise<void>((r) => ((crawler.wake = r), setTimeout(r, 30 * 60_000)));
 			} catch (e) {
+				crawler.error = e instanceof Error ? e.message : String(e);
 				console.error('Title index sync failed:', e instanceof CatalogUnavailable ? e.message : e);
 				await sleep(60_000);
 			}
 		}
 	})();
+}
+
+/** For the admin page. */
+export function crawlerStatus(): { label: string; value: string }[] {
+	const state = crawler.state ?? titles.getState<State>();
+	const progress = !state
+		? 'Not started'
+		: state.complete
+			? 'Up to date'
+			: `Downloading (part ${state.slice + 1} of ${slices().length})`;
+	return [
+		{ label: 'Titles in search index', value: titles.size.toLocaleString('en') },
+		{ label: 'Index', value: progress },
+		{ label: 'Last change seen', value: state?.updatedAt ? new Date(state.updatedAt * 1000).toUTCString() : '—' },
+		{ label: 'AniList requests left this minute', value: String(budget.remaining) },
+		...(crawler.error ? [{ label: 'Last sync error', value: crawler.error }] : [])
+	];
+}
+
+/** Download every title again (search keeps using the current copy meanwhile). */
+export function resyncTitles() {
+	const state = crawler.state;
+	if (!state) return;
+	Object.assign(state, { slice: 0, page: 1, complete: false });
+	titles.setState(state);
+	crawler.wake();
 }

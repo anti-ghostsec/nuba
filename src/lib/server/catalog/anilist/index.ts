@@ -3,7 +3,7 @@ import type { Item, ItemDetail, Release, ResultPage } from '$lib/types';
 import type { Catalog } from '../types';
 import { NotFound, query } from './client';
 import { DETAIL, HOME, searchQuery } from './queries';
-import { titles, startCrawler } from './crawl';
+import { crawlerStatus, resyncTitles, startCrawler, titles } from './crawl';
 import { FORMATS } from './format';
 import { SORTS, allFilters, filterVariables, sortVariable, variants } from './search';
 import { currentSeason } from './season';
@@ -26,12 +26,22 @@ interface Media {
 	description?: string | null;
 }
 
+type FuzzyDate = { year: number | null; month?: number | null; day?: number | null };
+
+const fuzzyDate = (d: FuzzyDate) =>
+	d.year ? [d.year, d.month, d.day].filter(Boolean).join('-') : null;
+
 interface MediaDetail extends Media {
 	siteUrl: string;
 	duration: number | null;
 	status: string | null;
 	season: string | null;
 	studios: { nodes: { name: string }[] };
+	tags: { name: string; rank: number; isMediaSpoiler: boolean; isAdult: boolean }[];
+	source: string | null;
+	favourites: number | null;
+	startDate: FuzzyDate;
+	endDate: FuzzyDate;
 	nextAiringEpisode: { episode: number; airingAt: number } | null;
 	externalLinks: { site: string; url: string; type: string | null; color: string | null; language: string | null }[];
 	recommendations: { nodes: { mediaRecommendation: Media | null }[] };
@@ -98,6 +108,8 @@ export const anilist: Catalog = {
 	},
 	sorts: SORTS,
 	start: startCrawler,
+	status: crawlerStatus,
+	resync: resyncTitles,
 
 	async home() {
 		const now = Math.floor(Date.now() / 1000);
@@ -199,21 +211,38 @@ export const anilist: Catalog = {
 		}
 
 		const item = toItem(m);
-		const facts = [
-			['Format', item.kind],
-			['Episodes', m.episodes],
-			['Duration', m.duration && `${m.duration} min`],
-			['Status', humanize(m.status)],
-			['Season', m.season && `${humanize(m.season)} ${m.seasonYear ?? ''}`.trim()],
-			['Studio', m.studios.nodes.map((s) => s.name).join(', ')]
+		const start = fuzzyDate(m.startDate);
+		const end = fuzzyDate(m.endDate);
+		const facts: ItemDetail['facts'] = [
+			{ label: 'Format', value: item.kind, filter: m.format && { key: 'format', value: m.format } },
+			{ label: 'Episodes', value: m.episodes },
+			{ label: 'Duration', value: m.duration && `${m.duration} min` },
+			{ label: 'Status', value: humanize(m.status), filter: m.status && { key: 'status', value: m.status } },
+			{ label: 'Aired', value: start && (end && end !== start ? `${start} → ${end}` : start) },
+			{
+				label: 'Season',
+				value: m.season && `${humanize(m.season)} ${m.seasonYear ?? ''}`.trim(),
+				filter: m.seasonYear ? { key: 'year', value: String(m.seasonYear) } : null
+			},
+			{ label: 'Source', value: humanize(m.source) },
+			{ label: 'Favourites', value: m.favourites?.toLocaleString('en') }
 		]
-			.filter(([, value]) => value)
-			.map(([label, value]) => ({ label: String(label), value: String(value) }));
+			.filter((f) => f.value)
+			.map((f) => ({ label: f.label, value: String(f.value), ...(f.filter && { filter: f.filter }) }));
 
 		const detail: ItemDetail = {
 			...item,
 			summary: stripHtml(m.description ?? null),
 			facts,
+			tagFilter: 'genre',
+			// Adult descriptors only make sense on adult titles.
+			keywords: m.tags
+				.filter((t) => m.isAdult || !t.isAdult)
+				.map((t) => ({ name: t.name, weight: t.rank, spoiler: t.isMediaSpoiler })),
+			keywordFilter: 'tag',
+			makers: m.studios.nodes.length
+				? { label: m.studios.nodes.length > 1 ? 'Studios' : 'Studio', names: m.studios.nodes.map((s) => s.name), filter: 'studio' }
+				: null,
 			links: m.externalLinks
 				.filter((l) => l.type === 'STREAMING')
 				.map((l) => ({ label: l.language ? `${l.site} (${l.language})` : l.site, url: l.url, color: l.color })),

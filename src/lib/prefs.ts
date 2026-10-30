@@ -3,6 +3,7 @@
 
 export type Mode = 'dark' | 'light';
 export type TitleLang = 'english' | 'romaji' | 'native';
+export type TextSize = 'small' | 'medium' | 'large';
 
 export interface Prefs {
 	mode: Mode;
@@ -10,6 +11,11 @@ export interface Prefs {
 	titleLang: TitleLang;
 	reduceMotion: boolean;
 	tz: string;
+	textSize: TextSize;
+	/** The catalog's sort value used on Browse when none is picked; '' for its default. */
+	sort: string;
+	/** The Continue Watching row on the home page. */
+	showContinue: boolean;
 }
 
 export const PREFS_COOKIE = 'nuba_prefs';
@@ -30,7 +36,10 @@ export const DEFAULT_PREFS: Prefs = {
 	accent: ACCENTS[0].value,
 	titleLang: 'english',
 	reduceMotion: false,
-	tz: 'UTC'
+	tz: 'UTC',
+	textSize: 'medium',
+	sort: '',
+	showContinue: true
 };
 
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -59,7 +68,13 @@ export function sanitizePrefs(input: Record<string, unknown>, base: Prefs = DEFA
 				? input.titleLang
 				: base.titleLang,
 		reduceMotion: typeof input.reduceMotion === 'boolean' ? input.reduceMotion : base.reduceMotion,
-		tz: isTimeZone(input.tz) ? input.tz : base.tz
+		tz: isTimeZone(input.tz) ? input.tz : base.tz,
+		textSize:
+			input.textSize === 'small' || input.textSize === 'medium' || input.textSize === 'large'
+				? input.textSize
+				: base.textSize,
+		sort: typeof input.sort === 'string' && /^[A-Z_]{0,32}$/.test(input.sort) ? input.sort : base.sort,
+		showContinue: typeof input.showContinue === 'boolean' ? input.showContinue : base.showContinue
 	};
 }
 
@@ -87,5 +102,5 @@ export function accentInk(hex: string): string {
 /** Attributes for the <html> element. Values are validated, so this is safe to inline. */
 export function htmlAttrs(prefs: Prefs): string {
 	const motion = prefs.reduceMotion ? ' data-reduce-motion' : '';
-	return `data-mode="${prefs.mode}"${motion} style="--accent:${prefs.accent};--accent-ink:${accentInk(prefs.accent)}"`;
+	return `data-mode="${prefs.mode}" data-text="${prefs.textSize}"${motion} style="--accent:${prefs.accent};--accent-ink:${accentInk(prefs.accent)}"`;
 }

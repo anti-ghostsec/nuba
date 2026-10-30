@@ -71,6 +71,11 @@ query Detail($id: Int) {
 		status
 		season
 		studios(isMain: true) { nodes { name } }
+		tags { name rank isMediaSpoiler isAdult }
+		source
+		favourites
+		startDate { year month day }
+		endDate { year month day }
 		nextAiringEpisode { episode airingAt }
 		externalLinks { site url type color language }
 		recommendations(perPage: 14, sort: RATING_DESC) {

@@ -42,7 +42,8 @@ const MIGRATIONS = [
 		catalog TEXT PRIMARY KEY,
 		state TEXT NOT NULL
 	);
-	`
+	`,
+	`ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0;`
 ];
 
 let db: Database.Database | undefined;

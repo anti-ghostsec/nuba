@@ -48,7 +48,7 @@ export async function createUser(username: string, password: string): Promise<Us
 		const { lastInsertRowid } = getDb()
 			.prepare('INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)')
 			.run(username, hash, Date.now());
-		return { id: Number(lastInsertRowid), username, showAdult: false };
+		return { id: Number(lastInsertRowid), username, showAdult: false, isAdmin: false };
 	} catch (e) {
 		if ((e as { code?: string }).code === 'SQLITE_CONSTRAINT_UNIQUE') return 'taken';
 		throw e;
@@ -57,12 +57,26 @@ export async function createUser(username: string, password: string): Promise<Us
 
 export async function authenticate(username: string, password: string): Promise<User | null> {
 	const row = getDb()
-		.prepare('SELECT id, username, password_hash, show_adult FROM users WHERE username = ?')
-		.get(username) as { id: number; username: string; password_hash: string; show_adult: number } | undefined;
+		.prepare('SELECT id, username, password_hash, show_adult, is_admin FROM users WHERE username = ?')
+		.get(username) as (UserRow & { password_hash: string }) | undefined;
 
 	const ok = await verifyPassword(password, row?.password_hash ?? (await DUMMY_HASH));
-	return row && ok ? { id: row.id, username: row.username, showAdult: !!row.show_adult } : null;
+	return row && ok ? toUser(row) : null;
 }
+
+interface UserRow {
+	id: number;
+	username: string;
+	show_adult: number;
+	is_admin: number;
+}
+
+const toUser = (row: UserRow): User => ({
+	id: row.id,
+	username: row.username,
+	showAdult: !!row.show_adult,
+	isAdmin: !!row.is_admin
+});
 
 const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');
 
@@ -95,9 +109,9 @@ export function userFromSession(token: string | undefined): User | null {
 	const id = hashToken(token);
 	const row = db
 		.prepare(
-			'SELECT s.expires_at, u.id, u.username, u.show_adult FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ?'
+			'SELECT s.expires_at, u.id, u.username, u.show_adult, u.is_admin FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ?'
 		)
-		.get(id) as { expires_at: number; id: number; username: string; show_adult: number } | undefined;
+		.get(id) as (UserRow & { expires_at: number }) | undefined;
 
 	if (!row) return null;
 	if (row.expires_at < Date.now()) {
@@ -107,7 +121,78 @@ export function userFromSession(token: string | undefined): User | null {
 	if (row.expires_at - Date.now() < (SESSION_DAYS / 2) * DAY) {
 		db.prepare('UPDATE sessions SET expires_at = ? WHERE id = ?').run(Date.now() + SESSION_DAYS * DAY, id);
 	}
-	return { id: row.id, username: row.username, showAdult: !!row.show_adult };
+	return toUser(row);
+}
+
+export function renameUser(userId: number, username: string): 'taken' | null {
+	try {
+		getDb().prepare('UPDATE users SET username = ? WHERE id = ?').run(username, userId);
+		return null;
+	} catch (e) {
+		if ((e as { code?: string }).code === 'SQLITE_CONSTRAINT_UNIQUE') return 'taken';
+		throw e;
+	}
+}
+
+/** Checks the password without the timing tricks of authenticate(): the user is known. */
+export async function checkPassword(userId: number, password: string): Promise<boolean> {
+	const row = getDb().prepare('SELECT password_hash FROM users WHERE id = ?').get(userId) as
+		| { password_hash: string }
+		| undefined;
+	return !!row && (await verifyPassword(password, row.password_hash));
+}
+
+/** Sets a new password and signs out every session except `keepToken` (if given). */
+export async function setPassword(userId: number, password: string, keepToken?: string) {
+	const hash = await hashPassword(password);
+	const db = getDb();
+	db.transaction(() => {
+		db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hash, userId);
+		endOtherSessions(userId, keepToken);
+	})();
+}
+
+/** Signs out everywhere else; with no token, everywhere. */
+export function endOtherSessions(userId: number, keepToken?: string) {
+	getDb()
+		.prepare('DELETE FROM sessions WHERE user_id = ? AND id != ?')
+		.run(userId, keepToken ? hashToken(keepToken) : '');
+}
+
+/** Removes the account; sessions and list entries go with it. */
+export function deleteUser(userId: number) {
+	getDb().prepare('DELETE FROM users WHERE id = ?').run(userId);
+}
+
+export function setAdmin(userId: number, on: boolean) {
+	getDb().prepare('UPDATE users SET is_admin = ? WHERE id = ?').run(on ? 1 : 0, userId);
+}
+
+export interface UserSummary extends User {
+	createdAt: number;
+	entries: number;
+}
+
+/** For the admin page: newest first, optionally filtered by name. */
+export function listUsers(search: string, limit = 100): UserSummary[] {
+	const rows = getDb()
+		.prepare(
+			`SELECT u.id, u.username, u.show_adult, u.is_admin, u.created_at,
+				(SELECT count(*) FROM list_entries e WHERE e.user_id = u.id) AS entries
+			FROM users u WHERE u.username LIKE ? ESCAPE '\\' ORDER BY u.created_at DESC LIMIT ?`
+		)
+		.all(`%${search.replace(/[\\%_]/g, (c) => '\\' + c)}%`, limit) as (UserRow & {
+		created_at: number;
+		entries: number;
+	})[];
+	return rows.map((r) => ({ ...toUser(r), createdAt: r.created_at, entries: r.entries }));
+}
+
+export function userById(userId: number): User | null {
+	const row = getDb().prepare('SELECT id, username, show_adult, is_admin FROM users WHERE id = ?').get(userId) as
+		| UserRow
+		| undefined;
+	return row ? toUser(row) : null;
 }
 
 /** The user's own declaration that they are 18 or older. */
